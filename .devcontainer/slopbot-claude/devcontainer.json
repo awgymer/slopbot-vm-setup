@@ -1,0 +1,51 @@
+{
+  "name": "Slopbot-claude Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:Australia/Adelaide}",
+      "CLAUDE_CODE_VERSION": "stable",
+      "GIT_DELTA_VERSION": "0.18.2"
+    }
+  },
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "--env-file",
+    "${localWorkspaceFolder}/devcontainer.env",
+    "--sysctl",
+    "net.ipv6.conf.all.disable_ipv6=1"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code", "esbenp.prettier-vscode", "eamodio.gitlens", "ms-python.python", "charliermarsh.ruff"],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {},
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          },
+          "zsh": {
+            "path": "zsh"
+          }
+        }
+      }
+    }
+  },
+  "remoteUser": "claude",
+  "mounts": [
+    "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+    "source=claude-code-config-${devcontainerId},target=/home/claude/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/claude/.claude"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postStartCommand": "/usr/local/bin/startup.sh",
+  "waitFor": "postStartCommand"
+}

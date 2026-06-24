@@ -1,0 +1,15 @@
+[core]
+    editor = nano
+    pager = less -FRX
+
+[alias]
+    lg = log --color --graph --abbrev-commit --decorate --all --oneline
+
+[pull]
+    rebase = true
+
+[push] 
+    default = current
+
+[log]
+    decorate = true

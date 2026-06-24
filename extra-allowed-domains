@@ -1,0 +1,19 @@
+# Extra domains to allow through the egress firewall
+# One domain per line. Lines starting with # are ignored, as are blank lines.
+
+# ── Auto-added by selected extra_tools ───────────────────────────────
+
+# uv / pip
+pypi.python.org
+pypi.org
+pythonhosted.org
+files.pythonhosted.org
+
+
+
+
+
+
+# Your custom domains:
+#
+# api.mycompany.com
