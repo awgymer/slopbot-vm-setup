@@ -83,8 +83,8 @@ NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest \
     | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
 NVM_DIR="${HOME}/.nvm"
 if [[ ! -d "$NVM_DIR" ]]; then
-    PROFILE=/dev/null curl -o- \
-        "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" \
+        | PROFILE=/dev/null bash
 else
     echo "    Already present"
 fi
