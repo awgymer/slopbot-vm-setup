@@ -20,12 +20,12 @@ mkdir -p "$LOCAL_BIN"
 # SDKMAN! + Java
 # ---------------------------------------------------------------------------
 echo "==> Installing SDKMAN!"
+set +u
 if [[ ! -d "${HOME}/.sdkman" ]]; then
     curl -s "https://get.sdkman.io?rcupdate=false" | bash
 else
     echo "    Already present"
 fi
-set +u
 source "${HOME}/.sdkman/bin/sdkman-init.sh"
 
 echo "==> Installing Java"
