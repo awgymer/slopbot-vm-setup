@@ -108,7 +108,7 @@ fi
 chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc"
 
 # ---------------------------------------------------------------------------
-# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh)
+# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node, Rust)
 # ---------------------------------------------------------------------------
 echo "==> Installing user-scoped tools for ${USER_NAME}"
 sudo -u "$USER_NAME" bash "${SCRIPT_DIR}/install-user-tools.sh"
