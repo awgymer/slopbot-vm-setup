@@ -39,8 +39,6 @@ export NVM_DIR="${HOME}/.nvm"
 # Machine-local config: secrets, env vars, overrides — not committed to version control
 [[ -f ~/.zlocal ]] && source ~/.zlocal
 
-# SDKMAN! — must be last; set +u required as SDKMAN does not support nounset
+# SDKMAN! — must be last
 export SDKMAN_DIR="${HOME}/.sdkman"
-set +u
 [[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
-set -u
