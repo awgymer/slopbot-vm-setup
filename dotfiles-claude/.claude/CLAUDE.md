@@ -17,6 +17,12 @@
 ## Security
 
 - Never use `sudo` or attempt to escalate privileges
+- Never commit files containing credentials, tokens, API keys, or secrets
+
+## Behaviour
+
+- If something unexpected is encountered mid-task, stop and report rather than attempting to work around it
+- Ask for approval before editing code unless explicitly instructed to work autonomously
 
 ## Development guidelines
 
