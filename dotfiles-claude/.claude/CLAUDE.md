@@ -2,8 +2,13 @@
 
 ## Environment
 
-## Behaviour
+- Always work under `$WORKSPACE`
 
-## Git & version control
+## Development guidelines
 
-## Off-limits
+- Default branch to start from is `main`
+- Only one feature/bug should be worked on at a time
+- Each feature should get a new branch
+- Follow existing code style. Check neighboring files for patterns
+- Never co-author commits
+- Use "conventional commit" style
