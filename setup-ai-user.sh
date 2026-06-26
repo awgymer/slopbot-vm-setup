@@ -96,13 +96,13 @@ if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
 fi
 
 echo "==> Installing dotfiles for ${USER_NAME}"
-for src in "${SCRIPT_DIR}/dotfiles-claude"/.*; do
-    name="$(basename "$src")"
-    [[ "$name" == "." || "$name" == ".." ]] && continue
-    [[ "$name" == *.example ]] && continue
-    install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${USER_HOME}/${name}"
-    echo "    ${USER_HOME}/${name}"
-done
+while IFS= read -r src; do
+    rel="${src#${SCRIPT_DIR}/dotfiles-claude/}"
+    dest="${USER_HOME}/${rel}"
+    mkdir -p "$(dirname "$dest")"
+    install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
+    echo "    $dest"
+done < <(find "${SCRIPT_DIR}/dotfiles-claude" -type f ! -name "*.example")
 
 # Source it from .bashrc (only matters interactively, which is fine here).
 #   FIX: if .bashrc had to be created by this append, it would be root-owned;
