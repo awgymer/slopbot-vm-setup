@@ -21,7 +21,7 @@ mkdir -p "$LOCAL_BIN"
 # ---------------------------------------------------------------------------
 echo "==> Installing SDKMAN!"
 if [[ ! -d "${HOME}/.sdkman" ]]; then
-    SDKMAN_CONFIGURE_PROFILE=false curl -s "https://get.sdkman.io" | bash
+    curl -s "https://get.sdkman.io?rcupdate=false" | bash
 else
     echo "    Already present"
 fi
