@@ -130,14 +130,14 @@ chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc"
 # User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node, Rust)
 # ---------------------------------------------------------------------------
 echo "==> Installing user-scoped tools for ${USER_NAME}"
-sudo -u "$USER_NAME" bash "${SCRIPT_DIR}/install-user-tools.sh"
+sudo -H -u "$USER_NAME" bash -c "cd '${USER_HOME}' && bash -s" < "${SCRIPT_DIR}/install-user-tools.sh"
 
 # ---------------------------------------------------------------------------
 # Claude Code (native installer — no npm required, auto-updates)
 # ---------------------------------------------------------------------------
 echo "==> Installing Claude Code for ${USER_NAME}"
 if [[ ! -f "${USER_HOME}/.local/bin/claude" ]]; then
-    sudo -u "$USER_NAME" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+    sudo -H -u "$USER_NAME" bash -c "cd '${USER_HOME}' && curl -fsSL https://claude.ai/install.sh | bash"
 else
     echo "    Already installed"
 fi
