@@ -4,9 +4,17 @@
 # Run as a sudo-capable user: sudo ./install-system-tools.sh
 #
 # Tools installed:
+#   - zip / unzip
 #   - apptainer  (requires SUID binary; must be system-level)
 #
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Common utilities
+# ---------------------------------------------------------------------------
+echo "==> Installing common utilities"
+apt-get update -q
+apt-get install -y zip unzip
 
 # ---------------------------------------------------------------------------
 # Apptainer
