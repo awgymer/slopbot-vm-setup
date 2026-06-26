@@ -4,6 +4,10 @@
 
 - Always work under `$WORKSPACE`
 
+## GitHub
+
+- Use `gh` for all GitHub interactions (PRs, issues, releases, API calls) rather than raw git or curl
+
 ## Development guidelines
 
 - Default branch to start from is `main`
