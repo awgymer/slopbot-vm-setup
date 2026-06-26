@@ -73,7 +73,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | `.zshrc` | Main zsh config — tools, completions, p10k |
 | `.zaliases` | Shell and git aliases |
 | `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
-| `.zlocal.example` | Template for machine-local secrets (copy to `~/.zlocal`, never commit) |
+| `.zlocal.example` | Template for machine-local secrets — copied to `~/.zlocal` automatically, never commit `~/.zlocal` |
 
 `dotfiles-claude/` contains the `claude` user's config, copied into `~` by `setup-ai-user.sh`. `.example` files are skipped and serve as templates only:
 
