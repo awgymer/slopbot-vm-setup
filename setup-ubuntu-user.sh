@@ -6,8 +6,8 @@
 #
 # What it does:
 #   - Installs zsh, Powerlevel10k, and symlinks dotfiles
-#   - Runs install-user-tools.sh (SDKMAN!, Java, uv, Nextflow, gh)
-#   - Installs nvm, Node LTS, and Claude Code
+#   - Runs install-user-tools.sh (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node)
+#   - Installs Claude Code via native installer
 #   - Sets zsh as the default shell
 #
 # After running, log out and back in, then run `p10k configure` to set up
@@ -66,29 +66,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh)
+# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node)
 # ---------------------------------------------------------------------------
 echo "==> Installing user-scoped tools"
 bash "${SCRIPT_DIR}/install-user-tools.sh"
 
 # ---------------------------------------------------------------------------
-# nvm + Node LTS + Claude Code
+# Claude Code (native installer — no npm required, auto-updates)
 # ---------------------------------------------------------------------------
-echo "==> Installing nvm"
-NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest \
-    | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
-NVM_DIR="${HOME}/.nvm"
-if [[ ! -d "$NVM_DIR" ]]; then
-    NVM_PROFILE=/dev/null curl -o- \
-        "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+echo "==> Installing Claude Code"
+if ! command -v claude &>/dev/null; then
+    curl -fsSL https://claude.ai/install.sh | bash
 else
-    echo "    Already present"
+    echo "    Already installed: $(claude --version 2>/dev/null | head -1)"
 fi
-
-echo "==> Installing Node LTS and Claude Code"
-source "${NVM_DIR}/nvm.sh"
-nvm install --lts
-npm install -g @anthropic-ai/claude-code
 
 # ---------------------------------------------------------------------------
 echo
