@@ -15,6 +15,7 @@ set -euo pipefail
 
 LOCAL_BIN="${HOME}/.local/bin"
 mkdir -p "$LOCAL_BIN"
+export PATH="${LOCAL_BIN}:${PATH}"
 
 # ---------------------------------------------------------------------------
 # SDKMAN! + Java
@@ -84,7 +85,7 @@ echo "==> Installing nvm"
 NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest \
     | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
 NVM_DIR="${HOME}/.nvm"
-if [[ ! -d "$NVM_DIR" ]]; then
+if [[ ! -f "${NVM_DIR}/nvm.sh" ]]; then
     curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" \
         | PROFILE=/dev/null bash
 else
