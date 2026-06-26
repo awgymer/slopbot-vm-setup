@@ -23,6 +23,17 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 # Aliases
 [[ -f ~/.zaliases ]] && source ~/.zaliases
 
+# User-local bin (uv, nextflow, gh, etc.)
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# SDKMAN!
+export SDKMAN_DIR="${HOME}/.sdkman"
+[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
+
+# nvm
+export NVM_DIR="${HOME}/.nvm"
+[[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
+
 # p10k config — run `p10k configure` to (re)generate
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 

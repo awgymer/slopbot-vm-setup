@@ -11,6 +11,7 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_NAME="claude"
 WORKSPACE="/workspace"
 USER_HOME="/home/${USER_NAME}"
@@ -102,6 +103,13 @@ alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
 cd "${WORKSPACE:-/workspace}" 2>/dev/null || true
+
+# User-local bin (uv, nextflow, gh, etc.)
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# SDKMAN!
+export SDKMAN_DIR="${HOME}/.sdkman"
+[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
 EOF
 chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc.local"
 
@@ -112,6 +120,12 @@ if ! grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
     echo 'source ~/.bashrc.local' >> "${USER_HOME}/.bashrc"
 fi
 chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc"
+
+# ---------------------------------------------------------------------------
+# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh)
+# ---------------------------------------------------------------------------
+echo "==> Installing user-scoped tools for ${USER_NAME}"
+sudo -u "$USER_NAME" bash "${SCRIPT_DIR}/install-user-tools.sh"
 
 # ===========================================================================
 # HARDENING

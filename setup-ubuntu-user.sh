@@ -5,9 +5,9 @@
 #   ./setup-ubuntu-user.sh
 #
 # What it does:
-#   - Installs zsh
-#   - Clones Powerlevel10k
-#   - Symlinks dotfiles from this repo into ~
+#   - Installs zsh, Powerlevel10k, and symlinks dotfiles
+#   - Runs install-user-tools.sh (SDKMAN!, Java, uv, Nextflow, gh)
+#   - Installs nvm, Node LTS, and Claude Code
 #   - Sets zsh as the default shell
 #
 # After running, log out and back in, then run `p10k configure` to set up
@@ -64,6 +64,31 @@ if [[ "$(getent passwd "$USER" | cut -d: -f7)" != "$ZSH_BIN" ]]; then
 else
     echo "    Already set"
 fi
+
+# ---------------------------------------------------------------------------
+# User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh)
+# ---------------------------------------------------------------------------
+echo "==> Installing user-scoped tools"
+bash "${SCRIPT_DIR}/install-user-tools.sh"
+
+# ---------------------------------------------------------------------------
+# nvm + Node LTS + Claude Code
+# ---------------------------------------------------------------------------
+echo "==> Installing nvm"
+NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest \
+    | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
+NVM_DIR="${HOME}/.nvm"
+if [[ ! -d "$NVM_DIR" ]]; then
+    NVM_PROFILE=/dev/null curl -o- \
+        "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+else
+    echo "    Already present"
+fi
+
+echo "==> Installing Node LTS and Claude Code"
+source "${NVM_DIR}/nvm.sh"
+nvm install --lts
+npm install -g @anthropic-ai/claude-code
 
 # ---------------------------------------------------------------------------
 echo
