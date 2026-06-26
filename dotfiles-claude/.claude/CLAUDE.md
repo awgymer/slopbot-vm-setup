@@ -4,6 +4,13 @@
 
 - Always work under `$WORKSPACE`
 
+## Workspace layout
+
+- Clone repositories into `$WORKSPACE/<repo-name>`
+- Use git worktrees for all feature work — create them as `$WORKSPACE/<repo-name>-<branch-name>`
+- Never work directly on a branch in the main clone — keep it on the default branch and up to date
+- Remove worktrees once the PR is merged
+
 ## GitHub
 
 - Use `gh` for all GitHub interactions (PRs, issues, releases, API calls) rather than raw git or curl
