@@ -4,7 +4,7 @@
 # fi
 
 # Powerlevel10k theme
-source ~/powerlevel10k/powerlevel10k.zsh-theme
+[[ -f ~/powerlevel10k/powerlevel10k.zsh-theme ]] && source ~/powerlevel10k/powerlevel10k.zsh-theme
 
 # History
 HISTFILE=~/.zsh_history
