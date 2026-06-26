@@ -27,7 +27,6 @@ else
 fi
 set +u
 source "${HOME}/.sdkman/bin/sdkman-init.sh"
-set -u
 
 echo "==> Installing Java"
 if ! sdk current java &>/dev/null; then
@@ -35,6 +34,7 @@ if ! sdk current java &>/dev/null; then
 else
     echo "    Already installed: $(sdk current java)"
 fi
+set -u
 
 # ---------------------------------------------------------------------------
 # uv
