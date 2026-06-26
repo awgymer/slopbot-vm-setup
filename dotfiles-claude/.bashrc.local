@@ -12,10 +12,6 @@ alias riskycc='claude --dangerously-skip-permissions'
 # User-local bin (uv, nextflow, gh, etc.)
 export PATH="${HOME}/.local/bin:${PATH}"
 
-# SDKMAN!
-export SDKMAN_DIR="${HOME}/.sdkman"
-[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
-
 # nvm
 export NVM_DIR="${HOME}/.nvm"
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
@@ -29,3 +25,7 @@ if [[ -f "${HOME}/.bash_secrets" ]]; then
     source "${HOME}/.bash_secrets"
     [[ -n "${GH_TOKEN:-}" ]] && gh auth setup-git 2>/dev/null || true
 fi
+
+# SDKMAN! — must be last
+export SDKMAN_DIR="${HOME}/.sdkman"
+[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
