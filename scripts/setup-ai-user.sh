@@ -12,6 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
 USER_NAME="claude"
 WORKSPACE="/workspace"
 USER_HOME="/home/${USER_NAME}"
@@ -97,16 +98,16 @@ fi
 
 echo "==> Installing dotfiles for ${USER_NAME}"
 while IFS= read -r src; do
-    rel="${src#${SCRIPT_DIR}/dotfiles-claude/}"
+    rel="${src#${REPO_DIR}/dotfiles-claude/}"
     dest="${USER_HOME}/${rel}"
     mkdir -p "$(dirname "$dest")"
     install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
     echo "    $dest"
-done < <(find "${SCRIPT_DIR}/dotfiles-claude" -type f ! -name "*.example")
+done < <(find "${REPO_DIR}/dotfiles-claude" -type f ! -name "*.example")
 
 echo "==> Installing example configs for ${USER_NAME}"
 while IFS= read -r src; do
-    rel="${src#${SCRIPT_DIR}/dotfiles-claude/}"
+    rel="${src#${REPO_DIR}/dotfiles-claude/}"
     dest="${USER_HOME}/${rel%.example}"
     if [[ ! -f "$dest" ]]; then
         mkdir -p "$(dirname "$dest")"
@@ -115,7 +116,7 @@ while IFS= read -r src; do
     else
         echo "    $dest (already exists, skipping)"
     fi
-done < <(find "${SCRIPT_DIR}/dotfiles-claude" -type f -name "*.example")
+done < <(find "${REPO_DIR}/dotfiles-claude" -type f -name "*.example")
 
 # Source it from .bashrc (only matters interactively, which is fine here).
 #   FIX: if .bashrc had to be created by this append, it would be root-owned;

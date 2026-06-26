@@ -8,16 +8,16 @@ The setup is split into three scripts that must be run in order:
 
 | Script | Run as | Purpose |
 |--------|--------|---------|
-| `install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer) |
-| `setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
-| `setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
+| `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer) |
+| `scripts/setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
+| `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
 
 ## Usage
 
 ### 1. System tools (root)
 
 ```bash
-sudo ./install-system-tools.sh
+sudo ./scripts/install-system-tools.sh
 ```
 
 Installs Apptainer via the official PPA. Must be system-level because unprivileged user namespaces are disabled as part of the hardening in the next step.
@@ -25,7 +25,7 @@ Installs Apptainer via the official PPA. Must be system-level because unprivileg
 ### 2. Agent user setup (root)
 
 ```bash
-sudo ./setup-ai-user.sh
+sudo ./scripts/setup-ai-user.sh
 ```
 
 - Creates a non-privileged `claude` user with no sudo access
@@ -40,7 +40,7 @@ sudo ./setup-ai-user.sh
 ### 3. Ubuntu user setup (ubuntu user)
 
 ```bash
-./setup-ubuntu-user.sh
+./scripts/setup-ubuntu-user.sh
 ```
 
 Run from the repo root as the `ubuntu` user (not root). Sets up:

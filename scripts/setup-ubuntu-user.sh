@@ -2,7 +2,7 @@
 #
 # Sets up the ubuntu user's interactive shell environment.
 # Run as the ubuntu user from the root of this repo:
-#   ./setup-ubuntu-user.sh
+#   ./scripts/setup-ubuntu-user.sh
 #
 # What it does:
 #   - Installs zsh, Powerlevel10k, and symlinks dotfiles
@@ -16,7 +16,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOTFILES_DIR="${SCRIPT_DIR}/dotfiles"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+DOTFILES_DIR="${REPO_DIR}/dotfiles"
 
 # ---------------------------------------------------------------------------
 # Install zsh
