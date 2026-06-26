@@ -36,3 +36,7 @@ alias gst='git stash'
 alias gstp='git stash pop'
 alias grb='git rebase'
 alias gri='git rebase --interactive'
+
+# Screen
+alias scx='screen -xR'
+alias scls='screen -list'
