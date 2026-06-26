@@ -8,6 +8,8 @@
 #   - uv
 #   - Nextflow
 #   - gh CLI
+#   - nvm + Node LTS
+#   - Rust (rustup)
 #
 set -euo pipefail
 
@@ -71,6 +73,35 @@ if [[ ! -f "${LOCAL_BIN}/gh" ]]; then
     rm -rf "$TMP"
 else
     echo "    Already installed: $(gh --version | head -1)"
+fi
+
+# ---------------------------------------------------------------------------
+# nvm + Node LTS
+# ---------------------------------------------------------------------------
+echo "==> Installing nvm"
+NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest \
+    | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
+NVM_DIR="${HOME}/.nvm"
+if [[ ! -d "$NVM_DIR" ]]; then
+    PROFILE=/dev/null curl -o- \
+        "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+else
+    echo "    Already present"
+fi
+
+echo "==> Installing Node LTS"
+source "${NVM_DIR}/nvm.sh"
+nvm install --lts
+
+# ---------------------------------------------------------------------------
+# Rust (rustup)
+# ---------------------------------------------------------------------------
+echo "==> Installing Rust"
+if [[ ! -d "${HOME}/.cargo" ]]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path
+else
+    echo "    Already installed: $(${HOME}/.cargo/bin/rustup --version 2>/dev/null | head -1)"
 fi
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,9 @@ export SDKMAN_DIR="${HOME}/.sdkman"
 export NVM_DIR="${HOME}/.nvm"
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
 
+# Rust
+[[ -f "${HOME}/.cargo/env" ]] && source "${HOME}/.cargo/env"
+
 # p10k config — run `p10k configure` to (re)generate
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 
