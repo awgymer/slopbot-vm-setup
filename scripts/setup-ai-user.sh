@@ -118,13 +118,11 @@ while IFS= read -r src; do
     fi
 done < <(find "${REPO_DIR}/dotfiles-claude" -type f -name "*.example")
 
-# Source it from .bashrc (only matters interactively, which is fine here).
-#   FIX: if .bashrc had to be created by this append, it would be root-owned;
-#   chown afterward to guarantee correct ownership.
 if ! grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
     echo 'source ~/.bashrc.local' >> "${USER_HOME}/.bashrc"
 fi
-chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc"
+# Dotfiles dirs were created by root (mkdir -p); fix ownership on everything.
+chown -R "$USER_NAME:$USER_NAME" "$USER_HOME"
 
 # ---------------------------------------------------------------------------
 # User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node, Rust)
