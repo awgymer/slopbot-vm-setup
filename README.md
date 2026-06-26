@@ -74,11 +74,24 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | `.zaliases` | Shell and git aliases |
 | `.zlocal.example` | Template for machine-local secrets (copy to `~/.zlocal`, never commit) |
 
-`dotfiles-claude/` contains the `claude` user's bash config, copied into `~` by `setup-ai-user.sh`:
+`dotfiles-claude/` contains the `claude` user's config, copied into `~` by `setup-ai-user.sh`. `.example` files are skipped and serve as templates only:
 
 | File | Purpose |
 |------|---------|
-| `.bashrc.local` | PATH, tool init, auto-cd to `/workspace` |
+| `.bashrc.local` | PATH, tool init, auto-cd to `/workspace`, sources `~/.bash_secrets` |
+| `.gitconfig` | Git defaults (no user identity — set via `~/.bash_secrets`) |
+| `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
+
+### Setting up credentials for the claude user
+
+After running `setup-ai-user.sh`, populate the secrets file as the `claude` user:
+
+```bash
+sudo -u claude cp /path/to/repo/dotfiles-claude/.bash_secrets.example /home/claude/.bash_secrets
+sudo -u claude nano /home/claude/.bash_secrets   # fill in values
+```
+
+The file is sourced on every login. When `GH_TOKEN` is set, `gh auth setup-git` is run automatically to configure git credential helpers.
 
 ## Security model
 

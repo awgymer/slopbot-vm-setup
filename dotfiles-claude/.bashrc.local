@@ -5,6 +5,10 @@ alias la='ls -A'
 alias l='ls -CF'
 cd "${WORKSPACE:-/workspace}" 2>/dev/null || true
 
+# Claude
+alias cc='claude'
+alias riskycc='claude --dangerously-skip-permissions'
+
 # User-local bin (uv, nextflow, gh, etc.)
 export PATH="${HOME}/.local/bin:${PATH}"
 
@@ -18,3 +22,10 @@ export NVM_DIR="${HOME}/.nvm"
 
 # Rust
 [[ -f "${HOME}/.cargo/env" ]] && source "${HOME}/.cargo/env"
+
+# Credentials: API keys, tokens, git identity
+# Copy .bash_secrets.example to ~/.bash_secrets and fill in values.
+if [[ -f "${HOME}/.bash_secrets" ]]; then
+    source "${HOME}/.bash_secrets"
+    [[ -n "${GH_TOKEN:-}" ]] && gh auth setup-git 2>/dev/null || true
+fi

@@ -95,9 +95,14 @@ if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
     echo "WORKSPACE=${WORKSPACE}" >> /etc/environment
 fi
 
-echo "==> Creating useful interactive profile"
-install -m 644 -o "$USER_NAME" -g "$USER_NAME" \
-    "${SCRIPT_DIR}/dotfiles-claude/.bashrc.local" "${USER_HOME}/.bashrc.local"
+echo "==> Installing dotfiles for ${USER_NAME}"
+for src in "${SCRIPT_DIR}/dotfiles-claude"/.*; do
+    name="$(basename "$src")"
+    [[ "$name" == "." || "$name" == ".." ]] && continue
+    [[ "$name" == *.example ]] && continue
+    install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${USER_HOME}/${name}"
+    echo "    ${USER_HOME}/${name}"
+done
 
 # Source it from .bashrc (only matters interactively, which is fine here).
 #   FIX: if .bashrc had to be created by this append, it would be root-owned;

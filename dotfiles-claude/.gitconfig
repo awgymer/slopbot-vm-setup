@@ -1,0 +1,11 @@
+[core]
+	pager = less -FRX
+
+[pull]
+	rebase = true
+
+[push]
+	default = current
+
+[init]
+	defaultBranch = main
