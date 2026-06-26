@@ -1,0 +1,6 @@
+# Machine-local config: secrets, tokens, overrides.
+# Copy to ~/.zlocal and fill in values. Never commit ~/.zlocal.
+#
+# export GH_TOKEN=ghp_xxx
+# export ANTHROPIC_API_KEY=sk-ant-xxx
+# export AWS_PROFILE=myprofile

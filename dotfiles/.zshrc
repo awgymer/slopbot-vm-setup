@@ -1,7 +1,7 @@
 # Enable Powerlevel10k instant prompt (must be near the top, before any output).
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
+# if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+#   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+# fi
 
 # Powerlevel10k theme
 source ~/powerlevel10k/powerlevel10k.zsh-theme
@@ -25,3 +25,6 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 
 # p10k config — run `p10k configure` to (re)generate
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+
+# Machine-local config: secrets, env vars, overrides — not committed to version control
+[[ -f ~/.zlocal ]] && source ~/.zlocal
