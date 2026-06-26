@@ -25,7 +25,9 @@ if [[ ! -d "${HOME}/.sdkman" ]]; then
 else
     echo "    Already present"
 fi
+set +u
 source "${HOME}/.sdkman/bin/sdkman-init.sh"
+set -u
 
 echo "==> Installing Java"
 if ! sdk current java &>/dev/null; then

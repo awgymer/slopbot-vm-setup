@@ -26,6 +26,8 @@ if [[ -f "${HOME}/.bash_secrets" ]]; then
     [[ -n "${GH_TOKEN:-}" ]] && gh auth setup-git 2>/dev/null || true
 fi
 
-# SDKMAN! — must be last
+# SDKMAN! — must be last; set +u required as SDKMAN does not support nounset
 export SDKMAN_DIR="${HOME}/.sdkman"
+set +u
 [[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
+set -u
