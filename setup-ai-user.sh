@@ -96,22 +96,8 @@ if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
 fi
 
 echo "==> Creating useful interactive profile"
-cat > "${USER_HOME}/.bashrc.local" <<'EOF'
-# Interactive-only conveniences (aliases / auto-cd).
-# WORKSPACE itself is set globally via /etc/environment.
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-cd "${WORKSPACE:-/workspace}" 2>/dev/null || true
-
-# User-local bin (uv, nextflow, gh, etc.)
-export PATH="${HOME}/.local/bin:${PATH}"
-
-# SDKMAN!
-export SDKMAN_DIR="${HOME}/.sdkman"
-[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
-EOF
-chown "$USER_NAME:$USER_NAME" "${USER_HOME}/.bashrc.local"
+install -m 644 -o "$USER_NAME" -g "$USER_NAME" \
+    "${SCRIPT_DIR}/dotfiles-claude/.bashrc.local" "${USER_HOME}/.bashrc.local"
 
 # Source it from .bashrc (only matters interactively, which is fine here).
 #   FIX: if .bashrc had to be created by this append, it would be root-owned;
