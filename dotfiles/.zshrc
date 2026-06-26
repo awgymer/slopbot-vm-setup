@@ -26,10 +26,6 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 # User-local bin (uv, nextflow, gh, etc.)
 export PATH="${HOME}/.local/bin:${PATH}"
 
-# SDKMAN!
-export SDKMAN_DIR="${HOME}/.sdkman"
-[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
-
 # nvm
 export NVM_DIR="${HOME}/.nvm"
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
@@ -42,3 +38,7 @@ export NVM_DIR="${HOME}/.nvm"
 
 # Machine-local config: secrets, env vars, overrides — not committed to version control
 [[ -f ~/.zlocal ]] && source ~/.zlocal
+
+# SDKMAN!
+export SDKMAN_DIR="${HOME}/.sdkman"
+[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
