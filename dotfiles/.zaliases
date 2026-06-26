@@ -36,7 +36,3 @@ alias gst='git stash'
 alias gstp='git stash pop'
 alias grb='git rebase'
 alias gri='git rebase --interactive'
-
-# Claude
-alias cc='claude'
-alias riskycc='claude --dangerously-skip-permissions'

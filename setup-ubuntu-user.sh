@@ -7,7 +7,6 @@
 # What it does:
 #   - Installs zsh, Powerlevel10k, and symlinks dotfiles
 #   - Runs install-user-tools.sh (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node)
-#   - Installs Claude Code via native installer
 #   - Sets zsh as the default shell
 #
 # After running, log out and back in, then run `p10k configure` to set up
@@ -70,16 +69,6 @@ fi
 # ---------------------------------------------------------------------------
 echo "==> Installing user-scoped tools"
 bash "${SCRIPT_DIR}/install-user-tools.sh"
-
-# ---------------------------------------------------------------------------
-# Claude Code (native installer — no npm required, auto-updates)
-# ---------------------------------------------------------------------------
-echo "==> Installing Claude Code"
-if ! command -v claude &>/dev/null; then
-    curl -fsSL https://claude.ai/install.sh | bash
-else
-    echo "    Already installed: $(claude --version 2>/dev/null | head -1)"
-fi
 
 # ---------------------------------------------------------------------------
 echo
