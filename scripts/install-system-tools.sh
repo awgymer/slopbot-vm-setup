@@ -4,6 +4,7 @@
 # Run as a sudo-capable user: sudo ./install-system-tools.sh
 #
 # Tools installed:
+#   - build-essential  (C toolchain required by Rust crates and other native builds)
 #   - zip / unzip
 #   - apptainer  (requires SUID binary; must be system-level)
 #
@@ -14,7 +15,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 echo "==> Installing common utilities"
 apt-get update -q
-apt-get install -y zip unzip
+apt-get install -y build-essential zip unzip
 
 # ---------------------------------------------------------------------------
 # Apptainer
