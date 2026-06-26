@@ -41,7 +41,7 @@ set -u
 # ---------------------------------------------------------------------------
 echo "==> Installing uv"
 if ! command -v uv &>/dev/null; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --no-modify-path
+    curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh
 else
     echo "    Already installed: $(uv --version)"
 fi
