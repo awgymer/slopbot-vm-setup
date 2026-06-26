@@ -104,6 +104,19 @@ while IFS= read -r src; do
     echo "    $dest"
 done < <(find "${SCRIPT_DIR}/dotfiles-claude" -type f ! -name "*.example")
 
+echo "==> Installing example configs for ${USER_NAME}"
+while IFS= read -r src; do
+    rel="${src#${SCRIPT_DIR}/dotfiles-claude/}"
+    dest="${USER_HOME}/${rel%.example}"
+    if [[ ! -f "$dest" ]]; then
+        mkdir -p "$(dirname "$dest")"
+        install -m 600 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
+        echo "    $dest (from example — fill in your values)"
+    else
+        echo "    $dest (already exists, skipping)"
+    fi
+done < <(find "${SCRIPT_DIR}/dotfiles-claude" -type f -name "*.example")
+
 # Source it from .bashrc (only matters interactively, which is fine here).
 #   FIX: if .bashrc had to be created by this append, it would be root-owned;
 #   chown afterward to guarantee correct ownership.

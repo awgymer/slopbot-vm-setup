@@ -72,6 +72,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 |------|---------|
 | `.zshrc` | Main zsh config — tools, completions, p10k |
 | `.zaliases` | Shell and git aliases |
+| `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
 | `.zlocal.example` | Template for machine-local secrets (copy to `~/.zlocal`, never commit) |
 
 `dotfiles-claude/` contains the `claude` user's config, copied into `~` by `setup-ai-user.sh`. `.example` files are skipped and serve as templates only:
@@ -80,15 +81,15 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 |------|---------|
 | `.bashrc.local` | PATH, tool init, auto-cd to `/workspace`, sources `~/.bash_secrets` |
 | `.gitconfig` | Git defaults (no user identity — set via `~/.bash_secrets`) |
+| `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
 
 ### Setting up credentials for the claude user
 
-After running `setup-ai-user.sh`, populate the secrets file as the `claude` user:
+`setup-ai-user.sh` copies `.bash_secrets.example` to `~/.bash_secrets` automatically (if not already present). Edit it to fill in your values:
 
 ```bash
-sudo -u claude cp /path/to/repo/dotfiles-claude/.bash_secrets.example /home/claude/.bash_secrets
-sudo -u claude nano /home/claude/.bash_secrets   # fill in values
+sudo -u claude nano /home/claude/.bash_secrets
 ```
 
 The file is sourced on every login. When `GH_TOKEN` is set, `gh auth setup-git` is run automatically to configure git credential helpers.

@@ -44,6 +44,7 @@ echo "==> Symlinking dotfiles"
 for src in "${DOTFILES_DIR}"/.*; do
     name="$(basename "$src")"
     [[ "$name" == "." || "$name" == ".." ]] && continue
+    [[ "$name" == *.example ]] && continue
     dest="${HOME}/${name}"
     if [[ -e "$dest" && ! -L "$dest" ]]; then
         echo "    Backing up existing ${dest} -> ${dest}.bak"
@@ -51,6 +52,18 @@ for src in "${DOTFILES_DIR}"/.*; do
     fi
     ln -sfn "$src" "$dest"
     echo "    ${dest} -> ${src}"
+done
+
+echo "==> Installing example configs"
+for src in "${DOTFILES_DIR}"/*.example "${DOTFILES_DIR}"/.*.example; do
+    [[ -e "$src" ]] || continue
+    dest="${HOME}/$(basename "${src%.example}")"
+    if [[ ! -f "$dest" ]]; then
+        cp "$src" "$dest"
+        echo "    $dest (from example — fill in your values)"
+    else
+        echo "    $dest (already exists, skipping)"
+    fi
 done
 
 # ---------------------------------------------------------------------------
