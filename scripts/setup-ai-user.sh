@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 USER_NAME="claude"
 WORKSPACE="/workspace"
+WORKSPACE_GROUP="workspace"
 USER_HOME="/home/${USER_NAME}"
 
 # ---------------------------------------------------------------------------
@@ -47,12 +48,26 @@ if [ -n "$SUDOERS_HITS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Workspace group (ubuntu + claude share read access to /workspace)
+# ---------------------------------------------------------------------------
+echo "==> Creating workspace group '${WORKSPACE_GROUP}'"
+if ! getent group "$WORKSPACE_GROUP" >/dev/null; then
+    groupadd "$WORKSPACE_GROUP"
+fi
+usermod -aG "$WORKSPACE_GROUP" "$USER_NAME"
+if id ubuntu &>/dev/null; then
+    usermod -aG "$WORKSPACE_GROUP" ubuntu
+fi
+
+# ---------------------------------------------------------------------------
 # Workspace
 # ---------------------------------------------------------------------------
 echo "==> Creating workspace"
 mkdir -p "$WORKSPACE"
-chown "$USER_NAME:$USER_NAME" "$WORKSPACE"
-chmod 700 "$WORKSPACE"
+chown "$USER_NAME:$WORKSPACE_GROUP" "$WORKSPACE"
+# 2770: setgid so new files/dirs inherit the 'workspace' group;
+#       owner rwx, group rwx, other none.
+chmod 2770 "$WORKSPACE"
 
 # ---------------------------------------------------------------------------
 # Lock down the default ubuntu home (if present)
@@ -229,6 +244,9 @@ ls -ld "$USER_HOME"
 echo
 echo "Workspace:"
 ls -ld "$WORKSPACE"
+echo
+echo "Workspace group members:"
+getent group "$WORKSPACE_GROUP" || echo "  (not found)"
 echo
 echo "WORKSPACE env (global):"
 grep '^WORKSPACE=' /etc/environment || echo "  (not set)"
