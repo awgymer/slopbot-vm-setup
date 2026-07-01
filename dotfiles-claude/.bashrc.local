@@ -1,8 +1,8 @@
+# Allow workspace group (ubuntu) to write files created by claude.
+umask 007
+
 # Interactive-only conveniences (aliases / auto-cd).
 # WORKSPACE itself is set globally via /etc/environment.
-
-# Allow workspace group (ubuntu) to write files created by claude.
-umask 002
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
