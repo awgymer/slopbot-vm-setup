@@ -77,6 +77,7 @@ done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 for domain in \
     "status.anthropic.com" \
     "api.anthropic.com" \
+    "downloads.claude.ai" \
     "registry.npmjs.org" \
     "sentry.io" \
     "marketplace.visualstudio.com" \

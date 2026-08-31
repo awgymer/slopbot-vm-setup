@@ -7,7 +7,7 @@ ARG CLAUDE_CODE_VERSION=stable
 ARG GIT_DELTA_VERSION=0.18.2
 ARG USERNAME=claude
 
-# Install basic development tools and iptables/ipset
+# Install basic development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   less \
@@ -19,17 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   man-db \
   unzip \
   gnupg2 \
-  iptables \
-  ipset \
-  iproute2 \
-  dnsutils \
-  aggregate \
   jq \
   nano \
   vim \
   curl \
   wget \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# iptables/ipset tooling for the egress firewall
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  iptables \
+  ipset \
+  iproute2 \
+  dnsutils \
+  aggregate \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 
 # Install gh cli latest stable
 RUN mkdir -p -m 755 /etc/apt/keyrings \
@@ -99,6 +104,7 @@ ENV SHELL=/bin/zsh
 
 # Install powerlevel10k theme
 RUN git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
+
 
 # Copy and set up firewall and startup scripts
 COPY init-firewall.sh startup.sh /usr/local/bin/
