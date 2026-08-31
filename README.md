@@ -8,7 +8,7 @@ The setup is split into three scripts that must be run in order:
 
 | Script | Run as | Purpose |
 |--------|--------|---------|
-| `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer) |
+| `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer), and the system timezone |
 | `scripts/setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
 
@@ -21,6 +21,14 @@ sudo ./scripts/install-system-tools.sh
 ```
 
 Installs Apptainer via the official PPA. Must be system-level because unprivileged user namespaces are disabled as part of the hardening in the next step.
+
+The script also sets the system timezone. A new VM uses UTC. The default is `Australia/Adelaide`. To use a different zone, give `VM_TIMEZONE` to `sudo`:
+
+```bash
+sudo VM_TIMEZONE=Europe/London ./scripts/install-system-tools.sh
+```
+
+Run `timedatectl list-timezones` to see the valid names. Docker containers do not use the timezone of the host. Give the `TZ` environment variable to each container, as `.devcontainer/` does.
 
 ### 2. Agent user setup (root)
 
