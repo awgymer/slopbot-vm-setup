@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Sets up a locked-down, non-privileged user for running AI agents in a VM.
-# Run as a sudo-capable user (e.g. `sudo ./setup-ai-user.sh`).
+# Run as a sudo-capable user:  sudo ./setup-ai-user.sh [username]
+# The user name defaults to "claude".
 #
 # NOTE ON THREAT MODEL:
 #   This script reduces blast radius *inside* the VM. It does NOT make the
@@ -12,7 +13,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USER_NAME="claude"
+USER_NAME="${1:-claude}"
+if [[ ! "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "ERROR: '${USER_NAME}' is not a valid user name" >&2
+    exit 2
+fi
 WORKSPACE="/workspace"
 WORKSPACE_GROUP="workspace"
 USER_HOME="/home/${USER_NAME}"
@@ -112,7 +117,7 @@ fi
 
 # Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
 # which is mode 700. The sync script merges them and keeps local changes.
-bash "${SCRIPT_DIR}/sync-claude-dotfiles.sh"
+bash "${SCRIPT_DIR}/sync-ai-user.sh" "$USER_NAME"
 
 # ---------------------------------------------------------------------------
 # User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node, Rust)

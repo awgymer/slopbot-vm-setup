@@ -15,4 +15,46 @@ become() {
         sudo -iu "$user"
     fi
 }
-compdef _users become 2>/dev/null
+
+# Slopbot VM
+# The ubuntu dotfiles are symlinks into the repo, so the repo is found by
+# following one of them. Set SLOPBOT_REPO to point somewhere else.
+_slopbot_repo() {
+    local rc
+    if [[ -n "${SLOPBOT_REPO:-}" ]]; then
+        print -r -- "$SLOPBOT_REPO"
+        return 0
+    fi
+    rc="$(readlink -f ~/.zshrc 2>/dev/null)"
+    [[ -n "$rc" && -d "${rc:h:h}/scripts" ]] || return 1
+    print -r -- "${rc:h:h}"
+}
+
+_slopbot_run() {
+    local script="$1" repo
+    shift
+    if ! repo="$(_slopbot_repo)"; then
+        print -u2 "Cannot find the repo. Set SLOPBOT_REPO to its path."
+        return 1
+    fi
+    if [[ ! -x "${repo}/scripts/${script}" ]]; then
+        print -u2 "No ${script} in ${repo}/scripts"
+        return 1
+    fi
+    sudo "${repo}/scripts/${script}" "$@"
+}
+
+# Set up an agent user. The name defaults to claude.
+#   setup-ai-user
+#   setup-ai-user bob
+setup-ai-user() { _slopbot_run setup-ai-user.sh "$@" }
+
+# Update an agent user's dotfiles. The name defaults to claude.
+#   sync-ai-user --dry-run
+#   sync-ai-user --review bob
+sync-ai-user() { _slopbot_run sync-ai-user.sh "$@" }
+
+# compdef exists only after compinit, so a non-interactive shell skips this.
+if (( $+functions[compdef] )); then
+    compdef _users become setup-ai-user sync-ai-user
+fi

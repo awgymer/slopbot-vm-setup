@@ -7,7 +7,7 @@
 #   - build-essential  (C toolchain required by Rust crates and other native builds)
 #   - zip / unzip
 #   - tzdata  (timezone database)
-#   - ucf  (merges config file changes; used by sync-claude-dotfiles.sh)
+#   - ucf  (merges config file changes; used by sync-ai-user.sh)
 #   - apptainer  (requires SUID binary; must be system-level)
 #
 set -euo pipefail

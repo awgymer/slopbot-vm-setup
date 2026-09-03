@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Installs the claude user's dotfiles and keeps local changes.
+# Installs an agent user's dotfiles and keeps local changes.
 # Run as root from the root of this repo:
-#   sudo ./scripts/sync-claude-dotfiles.sh [--dry-run] [--review]
+#   sudo ./scripts/sync-ai-user.sh [--dry-run] [--review] [username]
 #
-# The claude user gets copies, not symlinks, because this repo is in the
+# The agent user gets copies, not symlinks, because this repo is in the
 # ubuntu home, which is mode 700. A plain copy removes changes made on the
 # VM. Some of those changes are necessary: `gh auth setup-git` writes
 # credential settings into ~/.gitconfig at each login.
@@ -35,9 +35,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-USER_NAME="claude"
-USER_HOME="/home/${USER_NAME}"
-SRC_DIR="${REPO_DIR}/dotfiles-claude"
+USER_NAME=""   # set from the arguments below; defaults to claude
+USER_HOME=""
+SRC_DIR="${REPO_DIR}/dotfiles-ai"
 # The repo belongs to the ubuntu user and this script runs as root, so git
 # needs to be told that the checkout is a safe one to read.
 GIT_ARGS=(-C "$REPO_DIR" -c 'safe.directory=*')
@@ -49,15 +49,23 @@ for arg in "$@"; do
         --dry-run) DRY_RUN=1 ;;
         --review)  REVIEW=1 ;;
         -h|--help)
-            echo "Usage: sudo $(basename "$0") [--dry-run] [--review]"
+            echo "Usage: sudo $(basename "$0") [--dry-run] [--review] [username]"
             exit 0
             ;;
-        *)
+        -*)
             echo "ERROR: unknown option '${arg}'" >&2
             exit 2
             ;;
+        *)
+            if [[ -n "$USER_NAME" ]]; then
+                echo "ERROR: give one user name, not '${USER_NAME}' and '${arg}'" >&2
+                exit 2
+            fi
+            USER_NAME="$arg"
+            ;;
     esac
 done
+USER_NAME="${USER_NAME:-claude}"
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "ERROR: run this script as root — sudo $(basename "$0")" >&2
@@ -69,6 +77,12 @@ if [[ ! -d "$SRC_DIR" ]]; then
 fi
 if ! id "$USER_NAME" &>/dev/null; then
     echo "ERROR: user '${USER_NAME}' does not exist — run setup-ai-user.sh first" >&2
+    exit 1
+fi
+# Take the home directory from the account, rather than assume /home/<name>.
+USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
+if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+    echo "ERROR: no home directory for '${USER_NAME}'" >&2
     exit 1
 fi
 
@@ -88,7 +102,7 @@ FAILED=0
 # ---------------------------------------------------------------------------
 historical_sums() {
     local rel="$1" out="$2" sha
-    local path="dotfiles-claude/${rel}"
+    local path="dotfiles-ai/${rel}"
 
     md5sum < "${SRC_DIR}/${rel}" > "$out"
     [[ -d "${REPO_DIR}/.git" ]] || return 0
@@ -98,7 +112,7 @@ historical_sums() {
         if git "${GIT_ARGS[@]}" show "${sha}:${path}" > "${WORK_DIR}/blob" 2>/dev/null; then
             md5sum < "${WORK_DIR}/blob" >> "$out"
         fi
-    done < <(git "${GIT_ARGS[@]}" log --format='%H' -- "$path" 2>/dev/null)
+    done < <(git "${GIT_ARGS[@]}" log --follow --format='%H' -- "$path" 2>/dev/null)
 }
 
 # Is the file on disk one of the versions this repo has shipped?

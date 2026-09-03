@@ -9,10 +9,10 @@ The setup is split into three scripts that must be run in order:
 | Script | Run as | Purpose |
 |--------|--------|---------|
 | `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer), and the system timezone |
-| `scripts/setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
+| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user (`claude` by default) |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
 
-`scripts/sync-claude-dotfiles.sh` installs the `claude` user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating the claude user's dotfiles](#updating-the-claude-users-dotfiles).
+`scripts/sync-ai-user.sh` installs an agent user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating an agent user's dotfiles](#updating-an-agent-users-dotfiles).
 
 ## Usage
 
@@ -35,13 +35,14 @@ Run `timedatectl list-timezones` to see the valid names. Docker containers do no
 ### 2. Agent user setup (root)
 
 ```bash
-sudo ./scripts/setup-ai-user.sh
+sudo ./scripts/setup-ai-user.sh            # the user is named claude
+sudo ./scripts/setup-ai-user.sh bob        # or give a name
 ```
 
-- Creates a non-privileged `claude` user with no sudo access
-- Installs the `claude` user dotfiles, keeping any local changes
-- Creates `/workspace` (owned by `claude`, mode 700)
-- Installs shared tools for the `claude` user (see below)
+- Creates a non-privileged agent user with no sudo access, named `claude` unless you give another name
+- Installs the agent user dotfiles, keeping any local changes
+- Creates `/workspace`, owned by the agent user and the `workspace` group, mode 2770. A second agent user takes ownership of it, and shares it through the group
+- Installs shared tools for the agent user (see below)
 - Installs Claude Code via native installer
 - Applies security hardening:
   - Disables unprivileged user namespaces
@@ -83,11 +84,11 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 |------|---------|
 | `.zshrc` | Main zsh config — tools, completions, p10k |
 | `.zaliases` | Shell and git aliases |
-| `.zfuncs` | Shell functions — `become <user>` to switch user |
+| `.zfuncs` | Shell functions — `become`, plus the `setup-ai-user` and `sync-ai-user` wrappers |
 | `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
 | `.zlocal.example` | Template for machine-local secrets — copied to `~/.zlocal` automatically, never commit `~/.zlocal` |
 
-`dotfiles-claude/` contains the `claude` user's config, installed into `~` by `sync-claude-dotfiles.sh`. `.example` files are skipped and serve as templates only:
+`dotfiles-ai/` contains the agent user's config, installed into `~` by `sync-ai-user.sh`. `.example` files are skipped and serve as templates only:
 
 | File | Purpose |
 |------|---------|
@@ -96,14 +97,22 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
 
-### Updating the claude user's dotfiles
+### Updating an agent user's dotfiles
 
-The `claude` user gets copies, not symlinks, because this repo lives in the `ubuntu` home, which is mode `700`. To pick up repo changes on a VM that is already set up:
+The agent user gets copies, not symlinks, because this repo lives in the `ubuntu` home, which is mode `700`. To pick up repo changes on a VM that is already set up:
 
 ```bash
 git pull
-sudo ./scripts/sync-claude-dotfiles.sh --dry-run   # show what would change
-sudo ./scripts/sync-claude-dotfiles.sh             # apply
+sudo ./scripts/sync-ai-user.sh --dry-run   # show what would change
+sudo ./scripts/sync-ai-user.sh             # apply
+```
+
+The `.zfuncs` wrappers do the same from anywhere, and find the repo themselves:
+
+```bash
+sync-ai-user --dry-run          # the claude user
+sync-ai-user --review bob       # some other agent user
+setup-ai-user bob               # create and harden a new one
 ```
 
 Changes made on the VM are kept. `ucf` compares three versions — the one in the repo, the one it supplied last time, and the file on disk — which lets it tell a local change from an out-of-date file, and offer a three-way merge. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
