@@ -120,6 +120,50 @@ To tell a local change from a file that is merely out of date, the file on disk 
 
 One thing to note: `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies.
 
+### Resolving a conflict
+
+A run that finds local changes keeps your file, and puts the repo version next to it:
+
+```
+==> These files have local changes and a newer version in the repo:
+    diff /home/claude/.bashrc.local /home/claude/.bashrc.local.ucf-dist
+```
+
+To resolve it:
+
+```bash
+sudo -u claude diff /home/claude/.bashrc.local /home/claude/.bashrc.local.ucf-dist
+sudo -u claude nano /home/claude/.bashrc.local   # take the changes you want
+sudo rm /home/claude/.bashrc.local.ucf-dist
+```
+
+The next run is quiet, and the `.ucf-dist` file does not come back. The run above recorded the repo version as the one supplied, so your file can stay different from the repo for as long as you want.
+
+For the same reason, the warning comes once. If you delete the `.ucf-dist` file without taking the changes, nothing tells you about them again. Keep it until you have finished with it.
+
+With `--review`, a merge that works replaces your file, and saves the file from before the merge as `<file>.ucf-old`. A merge that conflicts writes `<file>.merge-error`, which holds the diff3 conflict markers, and leaves your file as it is.
+
+#### Files left behind
+
+| File | Written when |
+|------|--------------|
+| `<file>.ucf-dist` | Your version is kept. `--dry-run` writes these as well |
+| `<file>.ucf-old` | A `--review` merge worked. Holds the file from before the merge |
+| `<file>.merge-error` | A `--review` merge conflicted |
+
+Each run lists the `.ucf-dist` and `.merge-error` files at the end. To find all three:
+
+```bash
+sudo find /home/claude \( -name '*.ucf-dist' -o -name '*.ucf-old' -o -name '*.merge-error' \)
+```
+
+A dotfile taken out of the repo is not removed from the VM. Remove it by hand, and take out the ucf record with it:
+
+```bash
+sudo ucf --purge /home/claude/.thefile
+sudo rm /home/claude/.thefile
+```
+
 ### Setting up credentials for the claude user
 
 `setup-ai-user.sh` copies `.bash_secrets.example` to `~/.bash_secrets` automatically (if not already present). Edit it to fill in your values:
