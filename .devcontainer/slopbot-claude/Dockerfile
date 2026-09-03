@@ -24,6 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   vim \
   curl \
   wget \
+  ucf \
+  shellcheck \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # iptables/ipset tooling for the egress firewall
