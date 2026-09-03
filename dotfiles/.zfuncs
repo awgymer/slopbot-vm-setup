@@ -1,0 +1,18 @@
+# Shell functions — for things that need arguments or logic.
+# Simple one-liners belong in ~/.zaliases.
+
+# Users
+# Switch to another user with a login shell. Defaults to root.
+#   become                  -> root
+#   become claude           -> interactive login shell as claude
+#   become claude whoami    -> run one command as claude, then return
+become() {
+    local user="${1:-root}"
+    (( $# )) && shift
+    if (( $# )); then
+        sudo -iu "$user" -- "$@"
+    else
+        sudo -iu "$user"
+    fi
+}
+compdef _users become 2>/dev/null

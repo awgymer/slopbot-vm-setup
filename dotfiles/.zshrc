@@ -23,6 +23,9 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 # Aliases
 [[ -f ~/.zaliases ]] && source ~/.zaliases
 
+# Functions
+[[ -f ~/.zfuncs ]] && source ~/.zfuncs
+
 # User-local bin (uv, nextflow, gh, etc.)
 export PATH="${HOME}/.local/bin:${PATH}"
 

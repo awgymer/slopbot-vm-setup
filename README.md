@@ -80,6 +80,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 |------|---------|
 | `.zshrc` | Main zsh config — tools, completions, p10k |
 | `.zaliases` | Shell and git aliases |
+| `.zfuncs` | Shell functions — `become <user>` to switch user |
 | `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
 | `.zlocal.example` | Template for machine-local secrets — copied to `~/.zlocal` automatically, never commit `~/.zlocal` |
 
