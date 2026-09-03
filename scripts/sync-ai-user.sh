@@ -101,18 +101,24 @@ FAILED=0
 # this list through --sum-file and takes a match as "not changed on the VM".
 # ---------------------------------------------------------------------------
 historical_sums() {
-    local rel="$1" out="$2" sha
+    local rel="$1" out="$2" sha="" line
     local path="dotfiles-ai/${rel}"
 
     md5sum < "${SRC_DIR}/${rel}" > "$out"
     [[ -d "${REPO_DIR}/.git" ]] || return 0
 
-    while IFS= read -r sha; do
-        # A commit that deleted the file has no blob to read.
-        if git "${GIT_ARGS[@]}" show "${sha}:${path}" > "${WORK_DIR}/blob" 2>/dev/null; then
-            md5sum < "${WORK_DIR}/blob" >> "$out"
+    # --follow reaches the commits from before the directory was renamed.
+    # --name-only gives the name the file had in each of those commits,
+    # which is the name `git show` needs.
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="$line"
+        elif [[ -n "$line" && -n "$sha" ]]; then
+            if git "${GIT_ARGS[@]}" show "${sha}:${line}" > "${WORK_DIR}/blob" 2>/dev/null; then
+                md5sum < "${WORK_DIR}/blob" >> "$out"
+            fi
         fi
-    done < <(git "${GIT_ARGS[@]}" log --follow --format='%H' -- "$path" 2>/dev/null)
+    done < <(git "${GIT_ARGS[@]}" log --follow --format='%H' --name-only -- "$path" 2>/dev/null)
 }
 
 # Is the file on disk one of the versions this repo has shipped?
