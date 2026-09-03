@@ -94,6 +94,9 @@ UCF_ARGS=(--three-way)
 # --debconf-ok lets ucf use a debconf instance that is already running.
 (( REVIEW )) && UCF_ARGS+=(--debconf-ok)
 
+# Where ucf keeps its records. --state-dir moves it; this must agree.
+UCF_STATE_DIR="${UCF_STATE_DIR:-/var/lib/ucf}"
+WORK_DIR="$(mktemp -d)"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 FAILED=0
@@ -124,6 +127,13 @@ historical_sums() {
     done < <(git "${GIT_ARGS[@]}" log --follow --format='%H' --name-only -- "$path" 2>/dev/null)
 }
 
+# The md5sum ucf recorded when it last supplied this file, if it has one.
+ucf_lastsum() {
+    [[ -f "${UCF_STATE_DIR}/hashfile" ]] || return 1
+    awk -v d="$1" '$2 == d { print $1; found = 1 } END { exit !found }' \
+        "${UCF_STATE_DIR}/hashfile"
+}
+
 # Is the file on disk one of the versions this repo has shipped?
 is_unchanged() {
     local dest="$1" sums="$2" sum
@@ -138,22 +148,37 @@ is_unchanged() {
 # Install one file. ucf keeps local changes when it is available.
 # ---------------------------------------------------------------------------
 install_dotfile() {
-    local src="$1" dest="$2" rc=0
+    local src="$1" dest="$2" rc=0 changed=0 last
     local rel="${src#"${SRC_DIR}"/}"
     local sums="${WORK_DIR}/sums"
-    local -a force=()
+    local -a force=() sumarg=()
 
     (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
-    historical_sums "$rel" "$sums"
 
-    # Only answer for the user when the file holds changes this repo has
-    # never shipped. Anything else is safe for ucf to replace on its own.
-    if (( ! REVIEW )) && ! is_unchanged "$dest" "$sums"; then
+    if last="$(ucf_lastsum "$dest")"; then
+        # ucf already holds the version it supplied, so it can tell an
+        # out-of-date file from a changed one. The git history is not needed.
+        if [[ -e "$dest" ]]; then
+            if [[ "$(md5sum < "$dest" | cut -d" " -f1)" != "$last" ]]; then
+                changed=1
+            fi
+        fi
+    else
+        # No record. The file may come from a VM set up before ucf was used,
+        # so take the versions this repo has shipped from the git history.
+        historical_sums "$rel" "$sums"
+        sumarg=(--sum-file "$sums")
+        is_unchanged "$dest" "$sums" || changed=1
+    fi
+
+    # Only answer for the user when the file holds local changes. Anything
+    # else is safe for ucf to replace on its own.
+    if (( ! REVIEW && changed )); then
         force=(env UCF_FORCE_CONFFOLD=1)
     fi
 
     if command -v ucf &>/dev/null; then
-        "${force[@]}" ucf "${UCF_ARGS[@]}" --sum-file "$sums" "$src" "$dest" || rc=$?
+        "${force[@]}" ucf "${UCF_ARGS[@]}" "${sumarg[@]}" "$src" "$dest" || rc=$?
         if (( rc )); then
             echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
             FAILED=1
@@ -162,7 +187,7 @@ install_dotfile() {
     fi
 
     # No ucf. Same decision, without the option of a merge.
-    if is_unchanged "$dest" "$sums"; then
+    if (( ! changed )); then
         if cmp -s "$src" "$dest" 2>/dev/null; then
             echo "    ${dest} (no change)"
         elif (( DRY_RUN )); then
