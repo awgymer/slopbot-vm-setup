@@ -103,9 +103,12 @@ historical_sums() {
 
 # Is the file on disk one of the versions this repo has shipped?
 is_unchanged() {
-    local dest="$1" sums="$2"
+    local dest="$1" sums="$2" sum
     [[ -e "$dest" ]] || return 0
-    grep -q "^$(md5sum < "$dest" | cut -d' ' -f1)" "$sums"
+    sum="$(md5sum < "$dest" | cut -d" " -f1)"
+    # An empty sum would match every line, and the file would be replaced.
+    [[ -n "$sum" ]] || return 1
+    grep -q "^${sum}" "$sums"
 }
 
 # ---------------------------------------------------------------------------
