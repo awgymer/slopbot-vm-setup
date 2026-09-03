@@ -106,15 +106,17 @@ sudo ./scripts/sync-claude-dotfiles.sh --dry-run   # show what would change
 sudo ./scripts/sync-claude-dotfiles.sh             # apply
 ```
 
-Changes made on the VM are kept. `ucf` does a three-way merge between the repo version, the version it supplied last time, and the file on disk. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
+Changes made on the VM are kept. `ucf` compares three versions — the one in the repo, the one it supplied last time, and the file on disk — which lets it tell a local change from an out-of-date file, and offer a three-way merge. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
 
 | Result | What happens |
 |--------|--------------|
 | No local changes | The repo version is installed |
-| Local changes, clean merge | Both sets of changes are kept |
-| Local changes, conflict | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
+| Local changes | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
+| Local changes, with `--review` | ucf asks what to do, offering a three-way merge. A merge that conflicts goes to `<file>.merge-error` and the file on disk stays |
 
-Add `--review` to answer a question for each conflict instead, with the option to merge there and then. Without `ucf` installed, the file on disk always stays and the repo version goes to `<file>.ucf-dist`.
+A merge is never automatic — the default answer is always to keep the local file, so a run never blocks and never overwrites. Without `ucf` installed the behaviour is the same, minus the merge option.
+
+Two things to know. `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies. And on the first run against a VM set up before this script existed, ucf has no record of the file, so it keeps what is on disk and takes it as the starting point — changes made before that run are not reported. Diff the files yourself once if that matters.
 
 ### Setting up credentials for the claude user
 

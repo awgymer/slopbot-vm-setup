@@ -4,21 +4,33 @@
 # Run as root from the root of this repo:
 #   sudo ./scripts/sync-claude-dotfiles.sh [--dry-run] [--review]
 #
-# The claude user gets copies, not symlinks, because the repo is in the
-# ubuntu user's home, which is mode 700. A plain copy removes changes made
-# on the VM. Some of those changes are necessary: `gh auth setup-git`
-# writes credential settings into ~/.gitconfig at each login.
+# The claude user gets copies, not symlinks, because this repo is in the
+# ubuntu home, which is mode 700. A plain copy removes changes made on the
+# VM. Some of those changes are necessary: `gh auth setup-git` writes
+# credential settings into ~/.gitconfig at each login.
 #
-# ucf does a three-way merge between the file in the repo, the file it
-# supplied last time, and the file on disk. It keeps its record of the
-# supplied files in /var/lib/ucf. If ucf is not installed, this script
-# keeps the file on disk and writes the repo version next to it.
+# ucf holds the version it supplied last time in /var/lib/ucf. It compares
+# that with the file on disk to tell a local change from an old version.
+#
+#   No local change      The repo version goes in.
+#   Local change         The file on disk stays. The repo version goes to
+#                        <file>.ucf-dist. UCF_FORCE_CONFFOLD gives this
+#                        answer without a prompt, so a run never blocks.
+#   Local change,        ucf asks what to do. The choices include a
+#     with --review      three-way merge through diff3. A merge is never
+#                        automatic: the default answer is to keep the
+#                        local file. A merge that does not apply cleanly
+#                        goes to <file>.merge-error, and the file on
+#                        disk stays.
+#
+# On the first run against a VM set up before ucf was used, ucf has no
+# record of the file. It keeps the file on disk and takes it as the
+# starting point, so changes made before that run are not reported.
 #
 # Options:
-#   --dry-run   Show the changes. Write nothing.
+#   --dry-run   Report the changes without changing the dotfiles. Note
+#               that ucf still writes the <file>.ucf-dist copies.
 #   --review    Ask what to do with each file that has local changes.
-#               Without this option the file on disk stays as it is, and
-#               the repo version goes to <file>.ucf-dist for later review.
 #
 set -euo pipefail
 
@@ -60,21 +72,31 @@ fi
 
 UCF_ARGS=(--three-way)
 (( DRY_RUN )) && UCF_ARGS+=(--no-action)
-# ucf asks its questions through debconf, and only when this option is set.
+# --debconf-ok lets ucf use a debconf instance that is already running.
 (( REVIEW )) && UCF_ARGS+=(--debconf-ok)
 
-REVIEW_LIST=()
+FAILED=0
 
 # ---------------------------------------------------------------------------
-# Install one file. ucf does the merge when it is available.
+# Install one file. ucf keeps local changes when it is available.
 # ---------------------------------------------------------------------------
 install_dotfile() {
-    local src="$1" dest="$2"
+    local src="$1" dest="$2" rc=0
 
     (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
 
     if command -v ucf &>/dev/null; then
-        ucf "${UCF_ARGS[@]}" "$src" "$dest"
+        if (( REVIEW )); then
+            ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
+        else
+            # Answer "keep the local version" without a prompt. Without this
+            # ucf needs debconf to ask, and stops with an error if it cannot.
+            UCF_FORCE_CONFFOLD=1 ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
+        fi
+        if (( rc )); then
+            echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
+            FAILED=1
+        fi
         return
     fi
 
@@ -87,7 +109,6 @@ install_dotfile() {
     elif cmp -s "$src" "$dest"; then
         echo "    ${dest} (no change)"
     else
-        REVIEW_LIST+=("$dest")
         (( DRY_RUN )) && { echo "    ${dest} (differs — would write ${dest}.ucf-dist)"; return; }
         install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${dest}.ucf-dist"
         echo "    ${dest} (local changes kept — repo version at ${dest}.ucf-dist)"
@@ -99,7 +120,7 @@ command -v ucf &>/dev/null \
 
 echo "==> Installing dotfiles for ${USER_NAME}"
 while IFS= read -r src; do
-    rel="${src#${SRC_DIR}/}"
+    rel="${src#"${SRC_DIR}"/}"
     install_dotfile "$src" "${USER_HOME}/${rel}"
 done < <(find "$SRC_DIR" -type f ! -name "*.example" | sort)
 
@@ -108,7 +129,7 @@ done < <(find "$SRC_DIR" -type f ! -name "*.example" | sort)
 # ---------------------------------------------------------------------------
 echo "==> Installing example configs for ${USER_NAME}"
 while IFS= read -r src; do
-    rel="${src#${SRC_DIR}/}"
+    rel="${src#"${SRC_DIR}"/}"
     dest="${USER_HOME}/${rel%.example}"
     if [[ -f "$dest" ]]; then
         echo "    ${dest} (already exists, skipping)"
@@ -132,18 +153,23 @@ fi
 # ---------------------------------------------------------------------------
 # Report the files that need a person to look at them.
 # ---------------------------------------------------------------------------
-mapfile -t DIST_FILES < <(find "$USER_HOME" -name "*.ucf-dist" 2>/dev/null | sort)
-if (( ${#DIST_FILES[@]} )); then
+mapfile -t LEFTOVERS < <(
+    find "$USER_HOME" \( -name "*.ucf-dist" -o -name "*.merge-error" \) 2>/dev/null | sort
+)
+if (( ${#LEFTOVERS[@]} )); then
     echo
     echo "==> These files have local changes and a newer version in the repo:"
-    for f in "${DIST_FILES[@]}"; do
-        echo "    ${f%.ucf-dist}"
-        echo "        diff ${f%.ucf-dist} ${f}"
+    for f in "${LEFTOVERS[@]}"; do
+        echo "    diff ${f%.*} ${f}"
     done
     echo
-    echo "    Merge the changes you want, then delete the .ucf-dist file."
+    echo "    Take the changes you want, then delete the extra file."
     echo "    Or run this script again with --review to merge them now."
 fi
 
 echo
+if (( FAILED )); then
+    echo "Done, with errors above."
+    exit 1
+fi
 echo "Done."
