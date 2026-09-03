@@ -2,7 +2,7 @@
 #
 # Installs an agent user's dotfiles and keeps local changes.
 # Run as root from the root of this repo:
-#   sudo ./scripts/sync-ai-user.sh [--dry-run] [--review] [username]
+#   sudo ./scripts/sync-ai-user.sh [--dry-run] [--review] <username>
 #
 # The agent user gets copies, not symlinks, because this repo is in the
 # ubuntu home, which is mode 700. A plain copy removes changes made on the
@@ -35,7 +35,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-USER_NAME=""   # set from the arguments below; defaults to claude
+USER_NAME=""   # required; set from the arguments below
 USER_HOME=""
 SRC_DIR="${REPO_DIR}/dotfiles-ai"
 # The repo belongs to the ubuntu user and this script runs as root, so git
@@ -49,7 +49,7 @@ for arg in "$@"; do
         --dry-run) DRY_RUN=1 ;;
         --review)  REVIEW=1 ;;
         -h|--help)
-            echo "Usage: sudo $(basename "$0") [--dry-run] [--review] [username]"
+            echo "Usage: sudo $(basename "$0") [--dry-run] [--review] <username>"
             exit 0
             ;;
         -*)
@@ -65,7 +65,10 @@ for arg in "$@"; do
             ;;
     esac
 done
-USER_NAME="${USER_NAME:-claude}"
+if [[ -z "$USER_NAME" ]]; then
+    echo "ERROR: give the user name — $(basename "$0") [--dry-run] [--review] <username>" >&2
+    exit 2
+fi
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "ERROR: run this script as root — sudo $(basename "$0")" >&2

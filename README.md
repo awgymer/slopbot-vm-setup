@@ -9,7 +9,7 @@ The setup is split into three scripts that must be run in order:
 | Script | Run as | Purpose |
 |--------|--------|---------|
 | `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer), and the system timezone |
-| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user (`claude` by default) |
+| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
 
 `scripts/sync-ai-user.sh` installs an agent user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating an agent user's dotfiles](#updating-an-agent-users-dotfiles).
@@ -35,11 +35,10 @@ Run `timedatectl list-timezones` to see the valid names. Docker containers do no
 ### 2. Agent user setup (root)
 
 ```bash
-sudo ./scripts/setup-ai-user.sh            # the user is named claude
-sudo ./scripts/setup-ai-user.sh bob        # or give a name
+sudo ./scripts/setup-ai-user.sh claude
 ```
 
-- Creates a non-privileged agent user with no sudo access, named `claude` unless you give another name
+- Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
 - Installs the agent user dotfiles, keeping any local changes
 - Creates `/workspace`, owned by the agent user and the `workspace` group, mode 2770. A second agent user takes ownership of it, and shares it through the group
 - Installs shared tools for the agent user (see below)
@@ -65,7 +64,7 @@ After running, log out and back in, then run `p10k configure` to set up your pro
 
 ## Shared tools (`install-user-tools.sh`)
 
-Run automatically for both the `ubuntu` and `claude` users. Installs:
+Run automatically for both the `ubuntu` user and the agent user. Installs:
 
 - **SDKMAN! + Java LTS** — user-scoped JVM version management
 - **uv** — Python package/project manager
@@ -103,16 +102,16 @@ The agent user gets copies, not symlinks, because this repo lives in the `ubuntu
 
 ```bash
 git pull
-sudo ./scripts/sync-ai-user.sh --dry-run   # show what would change
-sudo ./scripts/sync-ai-user.sh             # apply
+sudo ./scripts/sync-ai-user.sh --dry-run claude   # show what would change
+sudo ./scripts/sync-ai-user.sh claude             # apply
 ```
 
 The `.zfuncs` wrappers do the same from anywhere, and find the repo themselves:
 
 ```bash
-sync-ai-user --dry-run          # the claude user
-sync-ai-user --review bob       # some other agent user
-setup-ai-user bob               # create and harden a new one
+sync-ai-user --dry-run claude
+sync-ai-user --review bob
+setup-ai-user bob                # create and harden a new one
 ```
 
 Changes made on the VM are kept. `ucf` compares three versions — the one in the repo, the one it supplied last time, and the file on disk — which lets it tell a local change from an out-of-date file, and offer a three-way merge. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 #
 # Sets up a locked-down, non-privileged user for running AI agents in a VM.
-# Run as a sudo-capable user:  sudo ./setup-ai-user.sh [username]
-# The user name defaults to "claude".
+# Run as a sudo-capable user:  sudo ./setup-ai-user.sh <username>
 #
 # NOTE ON THREAT MODEL:
 #   This script reduces blast radius *inside* the VM. It does NOT make the
@@ -13,7 +12,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USER_NAME="${1:-claude}"
+USER_NAME="${1:-}"
+if [[ -z "$USER_NAME" ]]; then
+    echo "Usage: sudo $(basename "$0") <username>" >&2
+    exit 2
+fi
 if [[ ! "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
     echo "ERROR: '${USER_NAME}' is not a valid user name" >&2
     exit 2
@@ -52,7 +55,7 @@ if [ -n "$SUDOERS_HITS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Workspace group (ubuntu + claude share read access to /workspace)
+# Workspace group (ubuntu + the agent user share read access to /workspace)
 # ---------------------------------------------------------------------------
 echo "==> Creating workspace group '${WORKSPACE_GROUP}'"
 if ! getent group "$WORKSPACE_GROUP" >/dev/null; then
@@ -90,7 +93,7 @@ fi
 #   FIX: also tighten the home dir itself to 700 (adduser leaves it 755),
 #   so no other unprivileged user can read it.
 # ---------------------------------------------------------------------------
-echo "==> Creating claude directories"
+echo "==> Creating directories for ${USER_NAME}"
 chmod 700 "$USER_HOME"
 mkdir -p "${USER_HOME}/.ssh"
 chown -R "$USER_NAME:$USER_NAME" "${USER_HOME}/.ssh"

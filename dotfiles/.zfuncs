@@ -44,13 +44,13 @@ _slopbot_run() {
     sudo "${repo}/scripts/${script}" "$@"
 }
 
-# Set up an agent user. The name defaults to claude.
-#   setup-ai-user
+# Set up an agent user. The name is required.
+#   setup-ai-user claude
 #   setup-ai-user bob
 setup-ai-user() { _slopbot_run setup-ai-user.sh "$@" }
 
-# Update an agent user's dotfiles. The name defaults to claude.
-#   sync-ai-user --dry-run
+# Update an agent user's dotfiles. The name is required.
+#   sync-ai-user --dry-run claude
 #   sync-ai-user --review bob
 sync-ai-user() { _slopbot_run sync-ai-user.sh "$@" }
 
