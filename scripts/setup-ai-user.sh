@@ -111,33 +111,9 @@ if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
     echo "WORKSPACE=${WORKSPACE}" >> /etc/environment
 fi
 
-echo "==> Installing dotfiles for ${USER_NAME}"
-while IFS= read -r src; do
-    rel="${src#${REPO_DIR}/dotfiles-claude/}"
-    dest="${USER_HOME}/${rel}"
-    mkdir -p "$(dirname "$dest")"
-    install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
-    echo "    $dest"
-done < <(find "${REPO_DIR}/dotfiles-claude" -type f ! -name "*.example")
-
-echo "==> Installing example configs for ${USER_NAME}"
-while IFS= read -r src; do
-    rel="${src#${REPO_DIR}/dotfiles-claude/}"
-    dest="${USER_HOME}/${rel%.example}"
-    if [[ ! -f "$dest" ]]; then
-        mkdir -p "$(dirname "$dest")"
-        install -m 600 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
-        echo "    $dest (from example — fill in your values)"
-    else
-        echo "    $dest (already exists, skipping)"
-    fi
-done < <(find "${REPO_DIR}/dotfiles-claude" -type f -name "*.example")
-
-if ! grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
-    echo 'source ~/.bashrc.local' >> "${USER_HOME}/.bashrc"
-fi
-# Dotfiles dirs were created by root (mkdir -p); fix ownership on everything.
-chown -R "$USER_NAME:$USER_NAME" "$USER_HOME"
+# Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
+# which is mode 700. The sync script merges them and keeps local changes.
+bash "${SCRIPT_DIR}/sync-claude-dotfiles.sh"
 
 # ---------------------------------------------------------------------------
 # User-scoped tools (SDKMAN!, Java, uv, Nextflow, gh, nvm, Node, Rust)

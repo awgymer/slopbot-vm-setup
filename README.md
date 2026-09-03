@@ -12,6 +12,8 @@ The setup is split into three scripts that must be run in order:
 | `scripts/setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
 
+`scripts/sync-claude-dotfiles.sh` installs the `claude` user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating the claude user's dotfiles](#updating-the-claude-users-dotfiles).
+
 ## Usage
 
 ### 1. System tools (root)
@@ -37,6 +39,7 @@ sudo ./scripts/setup-ai-user.sh
 ```
 
 - Creates a non-privileged `claude` user with no sudo access
+- Installs the `claude` user dotfiles, keeping any local changes
 - Creates `/workspace` (owned by `claude`, mode 700)
 - Installs shared tools for the `claude` user (see below)
 - Installs Claude Code via native installer
@@ -84,7 +87,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
 | `.zlocal.example` | Template for machine-local secrets — copied to `~/.zlocal` automatically, never commit `~/.zlocal` |
 
-`dotfiles-claude/` contains the `claude` user's config, copied into `~` by `setup-ai-user.sh`. `.example` files are skipped and serve as templates only:
+`dotfiles-claude/` contains the `claude` user's config, installed into `~` by `sync-claude-dotfiles.sh`. `.example` files are skipped and serve as templates only:
 
 | File | Purpose |
 |------|---------|
@@ -92,6 +95,26 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | `.gitconfig` | Git defaults (no user identity — set via `~/.bash_secrets`) |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
+
+### Updating the claude user's dotfiles
+
+The `claude` user gets copies, not symlinks, because this repo lives in the `ubuntu` home, which is mode `700`. To pick up repo changes on a VM that is already set up:
+
+```bash
+git pull
+sudo ./scripts/sync-claude-dotfiles.sh --dry-run   # show what would change
+sudo ./scripts/sync-claude-dotfiles.sh             # apply
+```
+
+Changes made on the VM are kept. `ucf` does a three-way merge between the repo version, the version it supplied last time, and the file on disk. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
+
+| Result | What happens |
+|--------|--------------|
+| No local changes | The repo version is installed |
+| Local changes, clean merge | Both sets of changes are kept |
+| Local changes, conflict | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
+
+Add `--review` to answer a question for each conflict instead, with the option to merge there and then. Without `ucf` installed, the file on disk always stays and the repo version goes to `<file>.ucf-dist`.
 
 ### Setting up credentials for the claude user
 
