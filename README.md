@@ -127,6 +127,8 @@ A merge is never automatic — the default answer is always to keep the local fi
 
 To tell a local change from a file that is merely out of date, the file on disk is compared with the version ucf supplied last. On a VM set up before ucf was used there is no such record, so the first run cannot tell the two apart: it keeps the file on disk and writes the repo version to `<file>.ucf-dist` for you to compare. That happens once per file, and from then on the record is there.
 
+`--review` on that same first run asks what to do, but without the merge choice. A three-way merge needs the version ucf supplied last, and that is the thing missing. The choices are to keep the local file (the default), to install the repo version — which saves the local one as `<file>.ucf-old` — or to show the difference first. The merge is there from the next run on, once ucf holds a record.
+
 One thing to note: `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies.
 
 ### Resolving a conflict
