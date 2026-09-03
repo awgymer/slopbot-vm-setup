@@ -116,7 +116,9 @@ Changes made on the VM are kept. `ucf` compares three versions — the one in th
 
 A merge is never automatic — the default answer is always to keep the local file, so a run never blocks and never overwrites. Without `ucf` installed the behaviour is the same, minus the merge option.
 
-Two things to know. `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies. And on the first run against a VM set up before this script existed, ucf has no record of the file, so it keeps what is on disk and takes it as the starting point — changes made before that run are not reported. Diff the files yourself once if that matters.
+To tell a local change from a file that is merely out of date, the file on disk is compared with every version of it in this repo's git history. A file matching any of them holds no local changes, so a VM set up before this script existed picks up the new version on its first run, with no prompt and nothing left to review.
+
+One thing to note: `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies.
 
 ### Setting up credentials for the claude user
 

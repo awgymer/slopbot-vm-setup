@@ -9,8 +9,11 @@
 # VM. Some of those changes are necessary: `gh auth setup-git` writes
 # credential settings into ~/.gitconfig at each login.
 #
-# ucf holds the version it supplied last time in /var/lib/ucf. It compares
-# that with the file on disk to tell a local change from an old version.
+# To tell a local change from an old version, the file on disk is compared
+# with every version of it in the git history of this repo. A file that
+# matches one of them holds no local changes, whether or not ucf has a
+# record of it, so a VM set up before this script existed still gets the
+# new version on the first run.
 #
 #   No local change      The repo version goes in.
 #   Local change         The file on disk stays. The repo version goes to
@@ -20,12 +23,8 @@
 #     with --review      three-way merge through diff3. A merge is never
 #                        automatic: the default answer is to keep the
 #                        local file. A merge that does not apply cleanly
-#                        goes to <file>.merge-error, and the file on
-#                        disk stays.
-#
-# On the first run against a VM set up before ucf was used, ucf has no
-# record of the file. It keeps the file on disk and takes it as the
-# starting point, so changes made before that run are not reported.
+#                        goes to <file>.merge-error, and the file on disk
+#                        stays.
 #
 # Options:
 #   --dry-run   Report the changes without changing the dotfiles. Note
@@ -39,6 +38,9 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 USER_NAME="claude"
 USER_HOME="/home/${USER_NAME}"
 SRC_DIR="${REPO_DIR}/dotfiles-claude"
+# The repo belongs to the ubuntu user and this script runs as root, so git
+# needs to be told that the checkout is a safe one to read.
+GIT_ARGS=(-C "$REPO_DIR" -c 'safe.directory=*')
 
 DRY_RUN=0
 REVIEW=0
@@ -75,24 +77,57 @@ UCF_ARGS=(--three-way)
 # --debconf-ok lets ucf use a debconf instance that is already running.
 (( REVIEW )) && UCF_ARGS+=(--debconf-ok)
 
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
 FAILED=0
+
+# ---------------------------------------------------------------------------
+# Collect the md5sum of every version of one dotfile that this repo holds:
+# the one in the working tree, and each one in the git history. ucf reads
+# this list through --sum-file and takes a match as "not changed on the VM".
+# ---------------------------------------------------------------------------
+historical_sums() {
+    local rel="$1" out="$2" sha
+    local path="dotfiles-claude/${rel}"
+
+    md5sum < "${SRC_DIR}/${rel}" > "$out"
+    [[ -d "${REPO_DIR}/.git" ]] || return 0
+
+    while IFS= read -r sha; do
+        # A commit that deleted the file has no blob to read.
+        if git "${GIT_ARGS[@]}" show "${sha}:${path}" > "${WORK_DIR}/blob" 2>/dev/null; then
+            md5sum < "${WORK_DIR}/blob" >> "$out"
+        fi
+    done < <(git "${GIT_ARGS[@]}" log --format='%H' -- "$path" 2>/dev/null)
+}
+
+# Is the file on disk one of the versions this repo has shipped?
+is_unchanged() {
+    local dest="$1" sums="$2"
+    [[ -e "$dest" ]] || return 0
+    grep -q "^$(md5sum < "$dest" | cut -d' ' -f1)" "$sums"
+}
 
 # ---------------------------------------------------------------------------
 # Install one file. ucf keeps local changes when it is available.
 # ---------------------------------------------------------------------------
 install_dotfile() {
     local src="$1" dest="$2" rc=0
+    local rel="${src#"${SRC_DIR}"/}"
+    local sums="${WORK_DIR}/sums"
+    local -a force=()
 
     (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
+    historical_sums "$rel" "$sums"
+
+    # Only answer for the user when the file holds changes this repo has
+    # never shipped. Anything else is safe for ucf to replace on its own.
+    if (( ! REVIEW )) && ! is_unchanged "$dest" "$sums"; then
+        force=(env UCF_FORCE_CONFFOLD=1)
+    fi
 
     if command -v ucf &>/dev/null; then
-        if (( REVIEW )); then
-            ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
-        else
-            # Answer "keep the local version" without a prompt. Without this
-            # ucf needs debconf to ask, and stops with an error if it cannot.
-            UCF_FORCE_CONFFOLD=1 ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
-        fi
+        "${force[@]}" ucf "${UCF_ARGS[@]}" --sum-file "$sums" "$src" "$dest" || rc=$?
         if (( rc )); then
             echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
             FAILED=1
@@ -100,16 +135,19 @@ install_dotfile() {
         return
     fi
 
-    # No ucf. Keep the file on disk, because this script cannot tell a local
-    # change from an old version of the repo file.
-    if [[ ! -e "$dest" ]]; then
-        (( DRY_RUN )) && { echo "    ${dest} (new)"; return; }
-        install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
-        echo "    ${dest} (new)"
-    elif cmp -s "$src" "$dest"; then
-        echo "    ${dest} (no change)"
+    # No ucf. Same decision, without the option of a merge.
+    if is_unchanged "$dest" "$sums"; then
+        if cmp -s "$src" "$dest" 2>/dev/null; then
+            echo "    ${dest} (no change)"
+        elif (( DRY_RUN )); then
+            echo "    ${dest} (would install the repo version)"
+        else
+            install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
+            echo "    ${dest} (updated)"
+        fi
+    elif (( DRY_RUN )); then
+        echo "    ${dest} (local changes — would write ${dest}.ucf-dist)"
     else
-        (( DRY_RUN )) && { echo "    ${dest} (differs — would write ${dest}.ucf-dist)"; return; }
         install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${dest}.ucf-dist"
         echo "    ${dest} (local changes kept — repo version at ${dest}.ucf-dist)"
     fi
