@@ -109,7 +109,7 @@ ucf_lastsum() {
 # Install one file. ucf keeps local changes when it is available.
 # ---------------------------------------------------------------------------
 install_dotfile() {
-    local src="$1" dest="$2" rc=0 changed=0 unrecorded=0 last
+    local src="$1" dest="$2" rc=0 changed=0 last
     local -a force=()
 
     (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
@@ -127,7 +127,6 @@ install_dotfile() {
         # version, so keep the file and leave the repo version for review.
         # This happens once per file, on a VM set up before ucf was used.
         changed=1
-        unrecorded=1
     fi
 
     # Only answer for the user when the file may hold local changes.
@@ -140,13 +139,6 @@ install_dotfile() {
         if (( rc )); then
             echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
             FAILED=1
-            return
-        fi
-        # ucf writes no .ucf-dist for a file it had no record of. Write one,
-        # or the difference is kept but never reported.
-        if (( unrecorded && ! REVIEW && ! DRY_RUN )); then
-            install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${dest}.ucf-dist"
-            echo "    ${dest} (no ucf record — repo version at ${dest}.ucf-dist)"
         fi
         return
     fi
@@ -218,7 +210,7 @@ if (( ${#LEFTOVERS[@]} )); then
     done
     echo
     echo "    Take the changes you want, then delete the extra file."
-    echo "    Or run this script again with --review to merge them now."
+    echo "    Or run this script again with --review to choose for each one."
 fi
 
 echo
