@@ -121,10 +121,11 @@ Changes made on the VM are kept. `ucf` compares three versions — the one in th
 | No local changes | The repo version is installed |
 | Local changes | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
 | Local changes, with `--review` | ucf asks what to do, offering a three-way merge. A merge that conflicts goes to `<file>.merge-error` and the file on disk stays |
+| No ucf record yet — the first run on a VM set up before ucf | The file on disk is kept, and the repo version goes to `<file>.ucf-dist`, whether or not it held local changes |
 
 A merge is never automatic — the default answer is always to keep the local file, so a run never blocks and never overwrites. Without `ucf` installed the behaviour is the same, minus the merge option.
 
-To tell a local change from a file that is merely out of date, the file on disk is compared with the version ucf supplied last. For a file ucf has no record of — one from a VM set up before this script existed — the comparison is against every version of it in this repo's git history instead, so it is still recognised as unchanged and picks up the new version. That search runs once per file: after the first run ucf holds a record and the history is not read again.
+To tell a local change from a file that is merely out of date, the file on disk is compared with the version ucf supplied last. On a VM set up before ucf was used there is no such record, so the first run cannot tell the two apart: it keeps the file on disk and writes the repo version to `<file>.ucf-dist` for you to compare. That happens once per file, and from then on the record is there.
 
 One thing to note: `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies.
 

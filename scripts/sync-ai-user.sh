@@ -9,11 +9,11 @@
 # VM. Some of those changes are necessary: `gh auth setup-git` writes
 # credential settings into ~/.gitconfig at each login.
 #
-# To tell a local change from an old version, the file on disk is compared
-# with every version of it in the git history of this repo. A file that
-# matches one of them holds no local changes, whether or not ucf has a
-# record of it, so a VM set up before this script existed still gets the
-# new version on the first run.
+# ucf holds the version it supplied last, and that is what tells a local
+# change from a file that is only out of date. On a VM set up before ucf
+# was used there is no such record for the first run. The file on disk is
+# then kept, whether it was changed or only old, and the repo version goes
+# to <file>.ucf-dist for you to look at. That happens once per file.
 #
 #   No local change      The repo version goes in.
 #   Local change         The file on disk stays. The repo version goes to
@@ -38,9 +38,6 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 USER_NAME=""   # required; set from the arguments below
 USER_HOME=""
 SRC_DIR="${REPO_DIR}/dotfiles-ai"
-# The repo belongs to the ubuntu user and this script runs as root, so git
-# needs to be told that the checkout is a safe one to read.
-GIT_ARGS=(-C "$REPO_DIR" -c 'safe.directory=*')
 
 DRY_RUN=0
 REVIEW=0
@@ -96,36 +93,9 @@ UCF_ARGS=(--three-way)
 
 # Where ucf keeps its records. --state-dir moves it; this must agree.
 UCF_STATE_DIR="${UCF_STATE_DIR:-/var/lib/ucf}"
-WORK_DIR="$(mktemp -d)"
-WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
 FAILED=0
 
 # ---------------------------------------------------------------------------
-# Collect the md5sum of every version of one dotfile that this repo holds:
-# the one in the working tree, and each one in the git history. ucf reads
-# this list through --sum-file and takes a match as "not changed on the VM".
-# ---------------------------------------------------------------------------
-historical_sums() {
-    local rel="$1" out="$2" sha="" line
-    local path="dotfiles-ai/${rel}"
-
-    md5sum < "${SRC_DIR}/${rel}" > "$out"
-    [[ -d "${REPO_DIR}/.git" ]] || return 0
-
-    # --follow reaches the commits from before the directory was renamed.
-    # --name-only gives the name the file had in each of those commits,
-    # which is the name `git show` needs.
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[0-9a-f]{40}$ ]]; then
-            sha="$line"
-        elif [[ -n "$line" && -n "$sha" ]]; then
-            if git "${GIT_ARGS[@]}" show "${sha}:${line}" > "${WORK_DIR}/blob" 2>/dev/null; then
-                md5sum < "${WORK_DIR}/blob" >> "$out"
-            fi
-        fi
-    done < <(git "${GIT_ARGS[@]}" log --follow --format='%H' --name-only -- "$path" 2>/dev/null)
-}
 
 # The md5sum ucf recorded when it last supplied this file, if it has one.
 ucf_lastsum() {
@@ -134,54 +104,49 @@ ucf_lastsum() {
         "${UCF_STATE_DIR}/hashfile"
 }
 
-# Is the file on disk one of the versions this repo has shipped?
-is_unchanged() {
-    local dest="$1" sums="$2" sum
-    [[ -e "$dest" ]] || return 0
-    sum="$(md5sum < "$dest" | cut -d" " -f1)"
-    # An empty sum would match every line, and the file would be replaced.
-    [[ -n "$sum" ]] || return 1
-    grep -q "^${sum}" "$sums"
-}
 
 # ---------------------------------------------------------------------------
 # Install one file. ucf keeps local changes when it is available.
 # ---------------------------------------------------------------------------
 install_dotfile() {
-    local src="$1" dest="$2" rc=0 changed=0 last
-    local rel="${src#"${SRC_DIR}"/}"
-    local sums="${WORK_DIR}/sums"
-    local -a force=() sumarg=()
+    local src="$1" dest="$2" rc=0 changed=0 unrecorded=0 last
+    local -a force=()
 
     (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
 
     if last="$(ucf_lastsum "$dest")"; then
-        # ucf already holds the version it supplied, so it can tell an
-        # out-of-date file from a changed one. The git history is not needed.
+        # ucf holds the version it supplied last, so it can tell a file with
+        # local changes from one that is only out of date.
         if [[ -e "$dest" ]]; then
             if [[ "$(md5sum < "$dest" | cut -d" " -f1)" != "$last" ]]; then
                 changed=1
             fi
         fi
-    else
-        # No record. The file may come from a VM set up before ucf was used,
-        # so take the versions this repo has shipped from the git history.
-        historical_sums "$rel" "$sums"
-        sumarg=(--sum-file "$sums")
-        is_unchanged "$dest" "$sums" || changed=1
+    elif [[ -e "$dest" ]] && ! cmp -s "$src" "$dest"; then
+        # No record. This script cannot tell a local change from an old
+        # version, so keep the file and leave the repo version for review.
+        # This happens once per file, on a VM set up before ucf was used.
+        changed=1
+        unrecorded=1
     fi
 
-    # Only answer for the user when the file holds local changes. Anything
-    # else is safe for ucf to replace on its own.
+    # Only answer for the user when the file may hold local changes.
     if (( ! REVIEW && changed )); then
         force=(env UCF_FORCE_CONFFOLD=1)
     fi
 
     if command -v ucf &>/dev/null; then
-        "${force[@]}" ucf "${UCF_ARGS[@]}" "${sumarg[@]}" "$src" "$dest" || rc=$?
+        "${force[@]}" ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
         if (( rc )); then
             echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
             FAILED=1
+            return
+        fi
+        # ucf writes no .ucf-dist for a file it had no record of. Write one,
+        # or the difference is kept but never reported.
+        if (( unrecorded && ! REVIEW && ! DRY_RUN )); then
+            install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${dest}.ucf-dist"
+            echo "    ${dest} (no ucf record — repo version at ${dest}.ucf-dist)"
         fi
         return
     fi
