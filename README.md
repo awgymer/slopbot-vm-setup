@@ -40,7 +40,8 @@ sudo ./scripts/setup-ai-user.sh claude
 
 - Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
 - Installs the agent user dotfiles, backing up any local changes
-- Creates `/workspace`, owned by the agent user and the `workspace` group, mode 2770. A second agent user takes ownership of it, and shares it through the group
+- Creates `/workspace/<username>`, owned by the agent user and its own group, mode 2770. `/workspace` itself belongs to `ubuntu`
+- Adds `ubuntu` to the agent group, so `ubuntu` has full access to every agent workspace while no agent can reach another one
 - Installs shared tools for the agent user (see below)
 - Installs Claude Code via native installer
 - Applies security hardening:
@@ -91,7 +92,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 
 | File | Purpose |
 |------|---------|
-| `.bashrc.local` | PATH, tool init, auto-cd to `/workspace`, sources `~/.bash_secrets` |
+| `.bashrc.local` | PATH, tool init, auto-cd to `$WORKSPACE_ROOT/<username>`, sources `~/.bash_secrets` |
 | `.config/git/config` | Git defaults (no user identity — set via `~/.bash_secrets`). `~/.gitconfig` is left to the VM — see below |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
@@ -154,6 +155,22 @@ A dotfile taken out of the repo is not removed from the VM. Remove it by hand, w
 ```bash
 sudo rm /home/claude/.thefile /var/lib/slopbot/dotfiles/claude/.thefile
 ```
+
+### Workspaces
+
+Each agent user gets its own directory. `WORKSPACE_ROOT` is set in `/etc/environment`, and each agent shell sets `WORKSPACE` from it:
+
+```
+/workspace              ubuntu:ubuntu    755
+/workspace/claude       claude:claude    2770
+/workspace/bob          bob:bob          2770
+```
+
+`ubuntu` is a member of the `claude` and `bob` groups, so it can read and write both. `claude` is not in `bob`'s group, so the agents are kept apart. The setgid bit makes new files take the directory group, and the agent's `umask 007` leaves them writable by that group.
+
+A new group takes effect at the next login, so log out and back in after adding an agent.
+
+On a VM set up by an earlier version, `/workspace` belongs to one agent and holds its files. The script does not take the directory over while anything other than agent directories is in it. Move the files into `/workspace/<username>/` first, then run it again.
 
 ### Setting up credentials for the claude user
 

@@ -21,9 +21,9 @@ if [[ ! "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
     echo "ERROR: '${USER_NAME}' is not a valid user name" >&2
     exit 2
 fi
-WORKSPACE="/workspace"
-WORKSPACE_GROUP="workspace"
+WORKSPACE_ROOT="/workspace"
 USER_HOME="/home/${USER_NAME}"
+USER_WORKSPACE="${WORKSPACE_ROOT}/${USER_NAME}"
 
 # ---------------------------------------------------------------------------
 # Create user
@@ -55,26 +55,59 @@ if [ -n "$SUDOERS_HITS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Workspace group (ubuntu + the agent user share read access to /workspace)
+# Workspace
+#
+# WORKSPACE_ROOT belongs to ubuntu and holds one directory per agent user.
+# Each agent owns its own directory, with its own group. ubuntu joins that
+# group, so ubuntu has full access to every workspace, and no agent can
+# reach the workspace of another.
 # ---------------------------------------------------------------------------
-echo "==> Creating workspace group '${WORKSPACE_GROUP}'"
-if ! getent group "$WORKSPACE_GROUP" >/dev/null; then
-    groupadd "$WORKSPACE_GROUP"
-fi
-usermod -aG "$WORKSPACE_GROUP" "$USER_NAME"
-if id ubuntu &>/dev/null; then
-    usermod -aG "$WORKSPACE_GROUP" ubuntu
+echo "==> Creating ${USER_WORKSPACE}"
+mkdir -p "$WORKSPACE_ROOT"
+
+# An earlier version of this script gave the root itself to one agent. Take
+# it over only when it holds nothing but agent directories, so that files
+# from such a VM are left for a person to move.
+STRAY=""
+while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    name="$(basename "$entry")"
+    if [[ ! -d "$entry" ]] || ! id "$name" &>/dev/null; then
+        STRAY="${STRAY}    ${entry}"$'\n'
+    fi
+done < <(find "$WORKSPACE_ROOT" -mindepth 1 -maxdepth 1 2>/dev/null)
+
+if [[ -n "$STRAY" ]]; then
+    echo "WARNING: ${WORKSPACE_ROOT} holds things that are not agent directories:" >&2
+    printf '%s' "$STRAY" >&2
+    echo "         Leaving ${WORKSPACE_ROOT} as it is. Move them into" >&2
+    echo "         ${USER_WORKSPACE}/ and run this script again." >&2
+else
+    if id ubuntu &>/dev/null; then
+        chown ubuntu:ubuntu "$WORKSPACE_ROOT"
+    fi
+    chmod 755 "$WORKSPACE_ROOT"
 fi
 
-# ---------------------------------------------------------------------------
-# Workspace
-# ---------------------------------------------------------------------------
-echo "==> Creating workspace"
-mkdir -p "$WORKSPACE"
-chown "$USER_NAME:$WORKSPACE_GROUP" "$WORKSPACE"
-# 2770: setgid so new files/dirs inherit the 'workspace' group;
+# adduser makes a group for each user, so this is the agent's own group.
+USER_GROUP="$(id -gn "$USER_NAME")"
+MEMBERS="$(getent group "$USER_GROUP" | cut -d: -f4)"
+if [[ -n "${MEMBERS//ubuntu/}" ]]; then
+    echo "WARNING: group '${USER_GROUP}' has other members (${MEMBERS})." >&2
+    echo "         They will reach ${USER_WORKSPACE} as well." >&2
+fi
+
+mkdir -p "$USER_WORKSPACE"
+chown "${USER_NAME}:${USER_GROUP}" "$USER_WORKSPACE"
+# 2770: setgid so new files take the agent's group, which ubuntu is in;
 #       owner rwx, group rwx, other none.
-chmod 2770 "$WORKSPACE"
+chmod 2770 "$USER_WORKSPACE"
+
+# ubuntu joins the agent's group, for full access to that workspace.
+# A login that is already open picks the group up at the next login.
+if id ubuntu &>/dev/null; then
+    usermod -aG "$USER_GROUP" ubuntu
+fi
 
 # ---------------------------------------------------------------------------
 # Lock down the default ubuntu home (if present)
@@ -113,9 +146,9 @@ usermod -s /bin/bash "$USER_NAME"
 # ---------------------------------------------------------------------------
 # Environment + interactive niceties
 # ---------------------------------------------------------------------------
-echo "==> Setting global WORKSPACE env var"
-if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
-    echo "WORKSPACE=${WORKSPACE}" >> /etc/environment
+echo "==> Setting global WORKSPACE_ROOT env var"
+if ! grep -q '^WORKSPACE_ROOT=' /etc/environment 2>/dev/null; then
+    echo "WORKSPACE_ROOT=${WORKSPACE_ROOT}" >> /etc/environment
 fi
 
 # Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
@@ -225,14 +258,17 @@ echo
 echo "Home perms:"
 ls -ld "$USER_HOME"
 echo
-echo "Workspace:"
-ls -ld "$WORKSPACE"
+echo "Workspace root:"
+ls -ld "$WORKSPACE_ROOT"
 echo
-echo "Workspace group members:"
-getent group "$WORKSPACE_GROUP" || echo "  (not found)"
+echo "Workspace for ${USER_NAME}:"
+ls -ld "$USER_WORKSPACE"
 echo
-echo "WORKSPACE env (global):"
-grep '^WORKSPACE=' /etc/environment || echo "  (not set)"
+echo "Members of group ${USER_GROUP} (ubuntu should be one):"
+getent group "$USER_GROUP" || echo "  (not found)"
+echo
+echo "WORKSPACE_ROOT env (global):"
+grep '^WORKSPACE_ROOT=' /etc/environment || echo "  (not set)"
 echo
 echo "Unprivileged user namespaces:"
 sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not available)"
