@@ -16,6 +16,8 @@
 # to <file>.ucf-dist for you to look at. That happens once per file.
 #
 #   No local change      The repo version goes in.
+#   Deleted on the VM    The repo version goes back in. UCF_FORCE_CONFFMISS
+#                        gives this answer without a prompt.
 #   Local change         The file on disk stays. The repo version goes to
 #                        <file>.ucf-dist. UCF_FORCE_CONFFOLD gives this
 #                        answer without a prompt, so a run never blocks.
@@ -129,8 +131,12 @@ install_dotfile() {
         changed=1
     fi
 
-    # Only answer for the user when the file may hold local changes.
-    if (( ! REVIEW && changed )); then
+    # A file deleted on the VM gets the repo version back. Without this, ucf
+    # asks about it when the repo version has changed, and the run blocks.
+    # Otherwise, only answer for the user when the file may hold local changes.
+    if [[ ! -e "$dest" ]]; then
+        force=(env UCF_FORCE_CONFFMISS=1)
+    elif (( ! REVIEW && changed )); then
         force=(env UCF_FORCE_CONFFOLD=1)
     fi
 

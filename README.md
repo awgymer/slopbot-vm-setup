@@ -119,6 +119,7 @@ Changes made on the VM are kept. `ucf` compares three versions — the one in th
 | Result | What happens |
 |--------|--------------|
 | No local changes | The repo version is installed |
+| File deleted on the VM | The repo version is installed again. To remove a dotfile for good, take it out of the repo — see [Files left behind](#files-left-behind) |
 | Local changes | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
 | Local changes, with `--review` | ucf asks what to do, offering a three-way merge. A merge that conflicts goes to `<file>.merge-error` and the file on disk stays |
 | No ucf record yet — the first run on a VM set up before ucf | The file on disk is kept, and the repo version goes to `<file>.ucf-dist`, whether or not it held local changes |
