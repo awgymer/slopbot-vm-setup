@@ -110,64 +110,48 @@ The `.zfuncs` wrappers do the same from anywhere, and find the repo themselves:
 
 ```bash
 sync-ai-user --dry-run claude
-sync-ai-user --review bob
+sync-ai-user bob
 setup-ai-user bob                # create and harden a new one
 ```
+
+Both scripts need `ucf`, which `install-system-tools.sh` installs, and both must be run from a terminal, because ucf may ask questions. `--dry-run` asks nothing and changes nothing.
 
 Changes made on the VM are kept. `ucf` compares three versions — the one in the repo, the one it supplied last time, and the file on disk — which lets it tell a local change from an out-of-date file, and offer a three-way merge. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
 
 | Result | What happens |
 |--------|--------------|
 | No local changes | The repo version is installed |
-| File deleted on the VM | The repo version is installed again. To remove a dotfile for good, take it out of the repo — see [Files left behind](#files-left-behind) |
-| Local changes | The file on disk stays. The repo version goes to `<file>.ucf-dist`, and the script lists it |
-| Local changes, with `--review` | ucf asks what to do, offering a three-way merge. A merge that conflicts goes to `<file>.merge-error` and the file on disk stays |
-| No ucf record yet — the first run on a VM set up before ucf | The file on disk is kept, and the repo version goes to `<file>.ucf-dist`, whether or not it held local changes |
+| Local changes, and no new repo version | Nothing — your file stays as it is |
+| Local changes, and a new repo version | ucf asks what to do — see [Answering ucf](#answering-ucf) |
+| File deleted on the VM | The repo version is installed again. To remove a dotfile for good, take it out of the repo — see [Removing a dotfile](#removing-a-dotfile) |
 
-A merge is never automatic — the default answer is always to keep the local file, so a run never blocks and never overwrites. Without `ucf` installed the behaviour is the same, minus the merge option.
+### Answering ucf
 
-To tell a local change from a file that is merely out of date, the file on disk is compared with the version ucf supplied last. On a VM set up before ucf was used there is no such record, so the first run cannot tell the two apart: it keeps the file on disk and writes the repo version to `<file>.ucf-dist` for you to compare. That happens once per file, and from then on the record is there.
+When a file has local changes and the repo has a new version, ucf asks what to do with it. ucf is made for Debian packages, so it calls the repo version "the package maintainer's version". The choices are:
 
-`--review` on that same first run asks what to do, but without the merge choice. A three-way merge needs the version ucf supplied last, and that is the thing missing. The choices are to keep the local file (the default), to install the repo version — which saves the local one as `<file>.ucf-old` — or to show the difference first. The merge is there from the next run on, once ucf holds a record.
+| Choice | What happens |
+|--------|--------------|
+| Keep the local version currently installed | Your file stays. The repo version is saved as `<file>.ucf-dist` for reference. This is the default |
+| Install the package maintainer's version | The repo version is installed. Your file is saved as `<file>.ucf-old` |
+| Show the differences, side by side, or 3-way | Shows a diff, or a three-way diff, then asks again |
+| Do a 3-way merge between available versions | Merges your changes into the repo version. If it works, your old file is saved as `<file>.ucf-old`. If it conflicts, the result goes to `<file>.merge-error` with diff3 conflict markers, your file stays as it is, and ucf asks again |
+| Start a new shell to examine the situation | Opens a shell to look at the files, then asks again |
 
-One thing to note: `--dry-run` does not change the dotfiles, but ucf still writes the `.ucf-dist` copies.
+Whatever you choose is recorded, and ucf does not ask about that file again until the repo version changes again. If you keep your version and want some of the repo changes as well, copy them in by hand from `<file>.ucf-dist`.
 
-### Resolving a conflict
-
-A run that finds local changes keeps your file, and puts the repo version next to it:
-
-```
-==> These files have local changes and a newer version in the repo:
-    diff /home/claude/.bashrc.local /home/claude/.bashrc.local.ucf-dist
-```
-
-To resolve it:
-
-```bash
-sudo -u claude diff /home/claude/.bashrc.local /home/claude/.bashrc.local.ucf-dist
-sudo -u claude nano /home/claude/.bashrc.local   # take the changes you want
-sudo rm /home/claude/.bashrc.local.ucf-dist
-```
-
-The next run is quiet, and the `.ucf-dist` file does not come back. The run above recorded the repo version as the one supplied, so your file can stay different from the repo for as long as you want.
-
-For the same reason, the warning comes once. If you delete the `.ucf-dist` file without taking the changes, nothing tells you about them again. Keep it until you have finished with it.
-
-With `--review`, a merge that works replaces your file, and saves the file from before the merge as `<file>.ucf-old`. A merge that conflicts writes `<file>.merge-error`, which holds the diff3 conflict markers, and leaves your file as it is.
+On a VM set up before ucf was used, there is no record of the version supplied last. The first run asks about every file that differs from the repo, without the merge choice, because a merge needs that record. From the next run on, the merge is there.
 
 #### Files left behind
 
 | File | Written when |
 |------|--------------|
-| `<file>.ucf-dist` | Your version is kept. `--dry-run` writes these as well |
-| `<file>.ucf-old` | A `--review` merge worked. Holds the file from before the merge |
-| `<file>.merge-error` | A `--review` merge conflicted |
+| `<file>.ucf-dist` | You kept your version. Holds the repo version |
+| `<file>.ucf-old` | The repo version or a merge was installed. Holds your file from before |
+| `<file>.merge-error` | A merge conflicted |
 
-Each run lists the `.ucf-dist` and `.merge-error` files at the end. To find all three:
+Each run lists these at the end. Delete each one when you are done with it.
 
-```bash
-sudo find /home/claude \( -name '*.ucf-dist' -o -name '*.ucf-old' -o -name '*.merge-error' \)
-```
+#### Removing a dotfile
 
 A dotfile taken out of the repo is not removed from the VM. Remove it by hand, and take out the ucf record with it:
 

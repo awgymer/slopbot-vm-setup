@@ -1,37 +1,32 @@
 #!/usr/bin/env bash
 #
 # Installs an agent user's dotfiles and keeps local changes.
-# Run as root from the root of this repo:
-#   sudo ./scripts/sync-ai-user.sh [--dry-run] [--review] <username>
+# Run as root, from a terminal, from the root of this repo:
+#   sudo ./scripts/sync-ai-user.sh [--dry-run] <username>
 #
 # The agent user gets copies, not symlinks, because this repo is in the
 # ubuntu home, which is mode 700. A plain copy removes changes made on the
 # VM. Some of those changes are necessary: `gh auth setup-git` writes
 # credential settings into ~/.gitconfig at each login.
 #
-# ucf holds the version it supplied last, and that is what tells a local
-# change from a file that is only out of date. On a VM set up before ucf
-# was used there is no such record for the first run. The file on disk is
-# then kept, whether it was changed or only old, and the repo version goes
-# to <file>.ucf-dist for you to look at. That happens once per file.
+# ucf installs each file. It holds the version it supplied last, and that is
+# what tells a local change from a file that is only out of date.
 #
 #   No local change      The repo version goes in.
 #   Deleted on the VM    The repo version goes back in. UCF_FORCE_CONFFMISS
 #                        gives this answer without a prompt.
-#   Local change         The file on disk stays. The repo version goes to
-#                        <file>.ucf-dist. UCF_FORCE_CONFFOLD gives this
-#                        answer without a prompt, so a run never blocks.
-#   Local change,        ucf asks what to do. The choices include a
-#     with --review      three-way merge through diff3. A merge is never
-#                        automatic: the default answer is to keep the
-#                        local file. A merge that does not apply cleanly
-#                        goes to <file>.merge-error, and the file on disk
-#                        stays.
+#   Local change, and    ucf asks what to do: keep the local file, install
+#     a new repo         the repo version, show the difference, or make a
+#     version            three-way merge through diff3. Whatever you answer
+#                        is recorded, and ucf does not ask again until the
+#                        repo version changes again.
+#
+# The prompt is why this script needs a terminal. On a VM set up before ucf
+# was used there is no record yet, so the first prompt for each file has no
+# merge choice.
 #
 # Options:
-#   --dry-run   Report the changes without changing the dotfiles. Note
-#               that ucf still writes the <file>.ucf-dist copies.
-#   --review    Ask what to do with each file that has local changes.
+#   --dry-run   Report what would happen. Changes nothing and asks nothing.
 #
 set -euo pipefail
 
@@ -42,13 +37,11 @@ USER_HOME=""
 SRC_DIR="${REPO_DIR}/dotfiles-ai"
 
 DRY_RUN=0
-REVIEW=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
-        --review)  REVIEW=1 ;;
         -h|--help)
-            echo "Usage: sudo $(basename "$0") [--dry-run] [--review] <username>"
+            echo "Usage: sudo $(basename "$0") [--dry-run] <username>"
             exit 0
             ;;
         -*)
@@ -65,12 +58,20 @@ for arg in "$@"; do
     esac
 done
 if [[ -z "$USER_NAME" ]]; then
-    echo "ERROR: give the user name — $(basename "$0") [--dry-run] [--review] <username>" >&2
+    echo "ERROR: give the user name — $(basename "$0") [--dry-run] <username>" >&2
     exit 2
 fi
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "ERROR: run this script as root — sudo $(basename "$0")" >&2
+    exit 1
+fi
+if (( ! DRY_RUN )) && [[ ! -t 0 ]]; then
+    echo "ERROR: run this script from a terminal — ucf may ask about files with local changes" >&2
+    exit 1
+fi
+if ! command -v ucf &>/dev/null; then
+    echo "ERROR: ucf is not installed — run install-system-tools.sh first" >&2
     exit 1
 fi
 if [[ ! -d "$SRC_DIR" ]]; then
@@ -88,10 +89,14 @@ if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
     exit 1
 fi
 
-UCF_ARGS=(--three-way)
-(( DRY_RUN )) && UCF_ARGS+=(--no-action)
+# The noninteractive frontend answers every prompt with its default, which
+# keeps the local file. That is the choice this script exists to offer.
+if [[ "${DEBIAN_FRONTEND:-}" == "noninteractive" ]]; then
+    unset DEBIAN_FRONTEND
+fi
+
 # --debconf-ok lets ucf use a debconf instance that is already running.
-(( REVIEW )) && UCF_ARGS+=(--debconf-ok)
+UCF_ARGS=(--three-way --debconf-ok)
 
 # Where ucf keeps its records. --state-dir moves it; this must agree.
 UCF_STATE_DIR="${UCF_STATE_DIR:-/var/lib/ucf}"
@@ -106,69 +111,66 @@ ucf_lastsum() {
         "${UCF_STATE_DIR}/hashfile"
 }
 
-
 # ---------------------------------------------------------------------------
-# Install one file. ucf keeps local changes when it is available.
+# --dry-run: say what ucf would do with one file. ucf's own --no-action is
+# no use here, because it still asks, and its answer to keep the local file
+# still writes <file>.ucf-dist.
 # ---------------------------------------------------------------------------
-install_dotfile() {
-    local src="$1" dest="$2" rc=0 changed=0 last
-    local -a force=()
+report_dotfile() {
+    local src="$1" dest="$2" last srcsum
 
-    (( DRY_RUN )) || mkdir -p "$(dirname "$dest")"
-
-    if last="$(ucf_lastsum "$dest")"; then
-        # ucf holds the version it supplied last, so it can tell a file with
-        # local changes from one that is only out of date.
-        if [[ -e "$dest" ]]; then
-            if [[ "$(md5sum < "$dest" | cut -d" " -f1)" != "$last" ]]; then
-                changed=1
-            fi
-        fi
-    elif [[ -e "$dest" ]] && ! cmp -s "$src" "$dest"; then
-        # No record. This script cannot tell a local change from an old
-        # version, so keep the file and leave the repo version for review.
-        # This happens once per file, on a VM set up before ucf was used.
-        changed=1
-    fi
-
-    # A file deleted on the VM gets the repo version back. Without this, ucf
-    # asks about it when the repo version has changed, and the run blocks.
-    # Otherwise, only answer for the user when the file may hold local changes.
     if [[ ! -e "$dest" ]]; then
-        force=(env UCF_FORCE_CONFFMISS=1)
-    elif (( ! REVIEW && changed )); then
-        force=(env UCF_FORCE_CONFFOLD=1)
-    fi
-
-    if command -v ucf &>/dev/null; then
-        "${force[@]}" ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
-        if (( rc )); then
-            echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
-            FAILED=1
+        if ucf_lastsum "$dest" >/dev/null; then
+            echo "    ${dest} (deleted — would put the repo version back)"
+        else
+            echo "    ${dest} (would install)"
         fi
         return
     fi
-
-    # No ucf. Same decision, without the option of a merge.
-    if (( ! changed )); then
-        if cmp -s "$src" "$dest" 2>/dev/null; then
-            echo "    ${dest} (no change)"
-        elif (( DRY_RUN )); then
-            echo "    ${dest} (would install the repo version)"
-        else
-            install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
-            echo "    ${dest} (updated)"
-        fi
-    elif (( DRY_RUN )); then
-        echo "    ${dest} (local changes — would write ${dest}.ucf-dist)"
+    if cmp -s "$src" "$dest"; then
+        echo "    ${dest} (no change)"
+        return
+    fi
+    if ! last="$(ucf_lastsum "$dest")"; then
+        echo "    ${dest} (no ucf record — would ask, without a merge choice)"
+        return
+    fi
+    srcsum="$(md5sum < "$src" | cut -d" " -f1)"
+    if [[ "$srcsum" == "$last" ]]; then
+        echo "    ${dest} (local changes, and no new repo version — no change)"
+    elif [[ "$(md5sum < "$dest" | cut -d" " -f1)" == "$last" ]]; then
+        echo "    ${dest} (would install the repo version)"
     else
-        install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "${dest}.ucf-dist"
-        echo "    ${dest} (local changes kept — repo version at ${dest}.ucf-dist)"
+        echo "    ${dest} (local changes, and a new repo version — would ask)"
     fi
 }
 
-command -v ucf &>/dev/null \
-    || echo "NOTE: ucf is not installed — files with local changes stay as they are."
+# ---------------------------------------------------------------------------
+# Install one file. ucf keeps local changes, and asks about them.
+# ---------------------------------------------------------------------------
+install_dotfile() {
+    local src="$1" dest="$2" rc=0
+    local -a force=()
+
+    if (( DRY_RUN )); then
+        report_dotfile "$src" "$dest"
+        return
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+
+    # A file deleted on the VM gets the repo version back. Without this, ucf
+    # asks about it when the repo version has changed.
+    if [[ ! -e "$dest" ]]; then
+        force=(env UCF_FORCE_CONFFMISS=1)
+    fi
+
+    "${force[@]}" ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
+    if (( rc )); then
+        echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
+        FAILED=1
+    fi
+}
 
 echo "==> Installing dotfiles for ${USER_NAME}"
 while IFS= read -r src; do
@@ -203,20 +205,18 @@ if (( ! DRY_RUN )); then
 fi
 
 # ---------------------------------------------------------------------------
-# Report the files that need a person to look at them.
+# List the files ucf leaves behind, so they get cleared up.
 # ---------------------------------------------------------------------------
 mapfile -t LEFTOVERS < <(
-    find "$USER_HOME" \( -name "*.ucf-dist" -o -name "*.merge-error" \) 2>/dev/null | sort
+    find "$USER_HOME" \( -name "*.ucf-dist" -o -name "*.ucf-old" -o -name "*.merge-error" \) \
+        2>/dev/null | sort
 )
 if (( ${#LEFTOVERS[@]} )); then
     echo
-    echo "==> These files have local changes and a newer version in the repo:"
+    echo "==> ucf left these files for reference. Delete each one when you are done with it:"
     for f in "${LEFTOVERS[@]}"; do
-        echo "    diff ${f%.*} ${f}"
+        echo "    ${f}"
     done
-    echo
-    echo "    Take the changes you want, then delete the extra file."
-    echo "    Or run this script again with --review to choose for each one."
 fi
 
 echo

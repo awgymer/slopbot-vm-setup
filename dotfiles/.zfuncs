@@ -51,7 +51,7 @@ setup-ai-user() { _slopbot_run setup-ai-user.sh "$@" }
 
 # Update an agent user's dotfiles. The name is required.
 #   sync-ai-user --dry-run claude
-#   sync-ai-user --review bob
+#   sync-ai-user bob
 sync-ai-user() { _slopbot_run sync-ai-user.sh "$@" }
 
 # compdef exists only after compinit, so a non-interactive shell skips this.
