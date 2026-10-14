@@ -186,6 +186,62 @@ if ! grep -q '^WORKSPACE_ROOT=' /etc/environment 2>/dev/null; then
     echo "WORKSPACE_ROOT=${WORKSPACE_ROOT}" >> /etc/environment
 fi
 
+# ---------------------------------------------------------------------------
+# umask and WORKSPACE for every shell, not only an interactive one
+#
+# .bashrc.local sets umask 007 and WORKSPACE, but ~/.bashrc returns early
+# for a non-interactive shell. So `become claude claude -p ...` or
+# `sudo -u claude bash -c ...` ran with umask 022 and no WORKSPACE. A file
+# made that way in the workspace is not writable by ubuntu, and a file made
+# in /tmp is readable by everyone.
+#
+# umask: sudo sets the umask of the command after the PAM session, so a
+#   sudoers default for commands run as the agent is what counts for become.
+#   pam_umask reads umask= from the GECOS field for the other PAM paths,
+#   such as login or machinectl. Ubuntu has pam_umask in common-session; a
+#   profile adds it when it is missing.
+# WORKSPACE: /etc/profile.d runs for every login shell, interactive or not.
+# ---------------------------------------------------------------------------
+echo "==> Setting umask 007 and WORKSPACE for every shell of ${USER_NAME}"
+SUDOERS_FILE="/etc/sudoers.d/90-agent-user-${USER_NAME}"
+SUDOERS_TMP="$(mktemp)"
+printf 'Defaults>%s umask_override, umask=0007\n' "$USER_NAME" > "$SUDOERS_TMP"
+chmod 440 "$SUDOERS_TMP"
+if ! visudo -qcf "$SUDOERS_TMP"; then
+    echo "ERROR: the sudoers file for ${USER_NAME} did not pass visudo" >&2
+    rm -f "$SUDOERS_TMP"
+    exit 1
+fi
+install -m 440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
+rm -f "$SUDOERS_TMP"
+
+GECOS="$(getent passwd "$USER_NAME" | cut -d: -f5)"
+if [[ "$GECOS" != *umask=* ]]; then
+    usermod -c "${GECOS:+${GECOS},}umask=007" "$USER_NAME"
+fi
+if ! grep -qs pam_umask /etc/pam.d/common-session; then
+    cat > /usr/share/pam-configs/agent-umask <<'EOF'
+Name: umask from the GECOS field
+Default: yes
+Priority: 0
+Session-Type: Additional
+Session:
+	optional	pam_umask.so
+EOF
+    if ! pam-auth-update --package --enable agent-umask 2>/dev/null; then
+        echo "WARNING: pam-auth-update failed — add 'session optional pam_umask.so'" >&2
+        echo "         to /etc/pam.d/common-session by hand" >&2
+    fi
+fi
+
+cat > /etc/profile.d/agent-workspace.sh <<'EOF'
+# Each agent user has its own directory under WORKSPACE_ROOT, which is set in
+# /etc/environment. Set WORKSPACE for every login shell, interactive or not.
+if [ -d "${WORKSPACE_ROOT:-/workspace}/$(id -un)" ]; then
+    export WORKSPACE="${WORKSPACE_ROOT:-/workspace}/$(id -un)"
+fi
+EOF
+
 # Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
 # which is mode 700. The sync script backs up any local changes.
 bash "${SCRIPT_DIR}/sync-ai-user.sh" "$USER_NAME"
@@ -493,6 +549,12 @@ getent group "$USER_GROUP" || echo "  (not found)"
 echo
 echo "WORKSPACE_ROOT env (global):"
 grep '^WORKSPACE_ROOT=' /etc/environment || echo "  (not set)"
+echo
+echo "umask of a non-interactive shell as ${USER_NAME} (0007 expected):"
+sudo -u "$USER_NAME" sh -c umask 2>/dev/null || echo "  (sudo failed)"
+echo
+echo "WORKSPACE of a non-interactive login shell as ${USER_NAME}:"
+sudo -iu "$USER_NAME" printenv WORKSPACE 2>/dev/null || echo "  (not set)"
 echo
 echo "Unprivileged user namespaces (at least one key must exist):"
 for key in kernel.unprivileged_userns_clone kernel.apparmor_restrict_unprivileged_userns \
