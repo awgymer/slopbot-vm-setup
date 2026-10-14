@@ -39,7 +39,7 @@ sudo ./scripts/setup-ai-user.sh claude
 ```
 
 - Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
-- Installs the agent user dotfiles, keeping any local changes
+- Installs the agent user dotfiles, backing up any local changes
 - Creates `/workspace`, owned by the agent user and the `workspace` group, mode 2770. A second agent user takes ownership of it, and shares it through the group
 - Installs shared tools for the agent user (see below)
 - Installs Claude Code via native installer
@@ -92,7 +92,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 | File | Purpose |
 |------|---------|
 | `.bashrc.local` | PATH, tool init, auto-cd to `/workspace`, sources `~/.bash_secrets` |
-| `.gitconfig` | Git defaults (no user identity — set via `~/.bash_secrets`) |
+| `.config/git/config` | Git defaults (no user identity — set via `~/.bash_secrets`). `~/.gitconfig` is left to the VM — see below |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
 
@@ -114,50 +114,45 @@ sync-ai-user bob
 setup-ai-user bob                # create and harden a new one
 ```
 
-Both scripts need `ucf`, which `install-system-tools.sh` installs, and both must be run from a terminal, because ucf may ask questions. `--dry-run` asks nothing and changes nothing.
+Every run installs the repo version of each file. A file you changed on the VM is moved to a backup folder first, so nothing is lost and nothing asks questions. `--dry-run` changes nothing.
 
-Changes made on the VM are kept. `ucf` compares three versions — the one in the repo, the one it supplied last time, and the file on disk — which lets it tell a local change from an out-of-date file, and offer a three-way merge. This matters because `gh auth setup-git` writes credential settings into `~/.gitconfig` at each login.
+To tell a local change from a file that is only out of date, the script keeps a copy of each version it installs, in `/var/lib/slopbot/dotfiles/<user>/`.
 
 | Result | What happens |
 |--------|--------------|
 | No local changes | The repo version is installed |
-| Local changes, and no new repo version | Nothing — your file stays as it is |
-| Local changes, and a new repo version | ucf asks what to do — see [Answering ucf](#answering-ucf) |
-| File deleted on the VM | The repo version is installed again. To remove a dotfile for good, take it out of the repo — see [Removing a dotfile](#removing-a-dotfile) |
+| Local changes | The file moves to `~/.dotfile-backups/<date>/`, next to `<file>.base`, the version you changed. The repo version is installed |
+| No copy kept yet — the first run on a VM set up before this script | As for local changes, since the two cannot be told apart. This happens once per file |
+| File deleted on the VM | The repo version is installed again |
 
-### Answering ucf
+Each run lists what it backed up, with a `diff` command for each file. Only the 2 newest backup folders are kept (`BACKUP_KEEP` in the script).
 
-When a file has local changes and the repo has a new version, ucf asks what to do with it. ucf is made for Debian packages, so it calls the repo version "the package maintainer's version". The choices are:
+To take your changes into the new version:
 
-| Choice | What happens |
-|--------|--------------|
-| Keep the local version currently installed | Your file stays. The repo version is saved as `<file>.ucf-dist` for reference. This is the default |
-| Install the package maintainer's version | The repo version is installed. Your file is saved as `<file>.ucf-old` |
-| Show the differences, side by side, or 3-way | Shows a diff, or a three-way diff, then asks again |
-| Do a 3-way merge between available versions | Merges your changes into the repo version. If it works, your old file is saved as `<file>.ucf-old`. If it conflicts, the result goes to `<file>.merge-error` with diff3 conflict markers, your file stays as it is, and ucf asks again |
-| Start a new shell to examine the situation | Opens a shell to look at the files, then asks again |
+```bash
+B=/home/claude/.dotfile-backups/<date>
+sudo -u claude diff $B/.bashrc.local /home/claude/.bashrc.local
+sudo -u claude nano /home/claude/.bashrc.local   # copy across what you want
+```
 
-Whatever you choose is recorded, and ucf does not ask about that file again until the repo version changes again. If you keep your version and want some of the repo changes as well, copy them in by hand from `<file>.ucf-dist`.
+Or merge the three versions — yours, the one you changed, and the new one — with `git merge-file`. Conflicts are marked in the file, as in a git merge:
 
-On a VM set up before ucf was used, there is no record of the version supplied last. The first run asks about every file that differs from the repo, without the merge choice, because a merge needs that record. From the next run on, the merge is there.
+```bash
+sudo -u claude git merge-file -p $B/.bashrc.local $B/.bashrc.local.base /home/claude/.bashrc.local > merged
+```
 
-#### Files left behind
+#### `~/.gitconfig`
 
-| File | Written when |
-|------|--------------|
-| `<file>.ucf-dist` | You kept your version. Holds the repo version |
-| `<file>.ucf-old` | The repo version or a merge was installed. Holds your file from before |
-| `<file>.merge-error` | A merge conflicted |
+`~/.gitconfig` belongs to the VM, not the repo. `.bashrc.local` runs `gh auth setup-git` at each login, which writes credential settings into it. The repo's git settings go to `~/.config/git/config` instead. Git reads both, and settings in `~/.gitconfig` win.
 
-Each run lists these at the end. Delete each one when you are done with it.
+The first run on a VM set up before this change backs up `~/.gitconfig` and leaves it empty, because it still holds the old repo settings, which would override the new file. `gh auth setup-git` puts its settings back at the next login.
 
 #### Removing a dotfile
 
-A dotfile taken out of the repo is not removed from the VM. Remove it by hand, and take out the ucf record with it:
+A dotfile taken out of the repo is not removed from the VM. Remove it by hand, with the copy the script keeps:
 
 ```bash
-sudo ucf --purge /home/claude/.thefile
-sudo rm /home/claude/.thefile
+sudo rm /home/claude/.thefile /var/lib/slopbot/dotfiles/claude/.thefile
 ```
 
 ### Setting up credentials for the claude user

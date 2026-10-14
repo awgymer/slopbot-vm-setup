@@ -119,7 +119,7 @@ if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
 fi
 
 # Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
-# which is mode 700. The sync script merges them and keeps local changes.
+# which is mode 700. The sync script backs up any local changes.
 bash "${SCRIPT_DIR}/sync-ai-user.sh" "$USER_NAME"
 
 # ---------------------------------------------------------------------------

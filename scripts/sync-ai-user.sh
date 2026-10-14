@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
 #
-# Installs an agent user's dotfiles and keeps local changes.
-# Run as root, from a terminal, from the root of this repo:
+# Installs an agent user's dotfiles, and backs up any local changes first.
+# Run as root from the root of this repo:
 #   sudo ./scripts/sync-ai-user.sh [--dry-run] <username>
 #
 # The agent user gets copies, not symlinks, because this repo is in the
-# ubuntu home, which is mode 700. A plain copy removes changes made on the
-# VM. Some of those changes are necessary: `gh auth setup-git` writes
-# credential settings into ~/.gitconfig at each login.
+# ubuntu home, which is mode 700.
 #
-# ucf installs each file. It holds the version it supplied last, and that is
-# what tells a local change from a file that is only out of date.
+# Every run installs the repo version. A copy of each version installed is
+# kept in STATE_DIR, and that is what tells a local change from a file that
+# is only out of date:
 #
 #   No local change      The repo version goes in.
-#   Deleted on the VM    The repo version goes back in. UCF_FORCE_CONFFMISS
-#                        gives this answer without a prompt.
-#   Local change, and    ucf asks what to do: keep the local file, install
-#     a new repo         the repo version, show the difference, or make a
-#     version            three-way merge through diff3. Whatever you answer
-#                        is recorded, and ucf does not ask again until the
-#                        repo version changes again.
+#   Local change         The file on disk moves to a dated folder in
+#                        ~/.dotfile-backups, next to <file>.base, the version
+#                        it was changed from. The repo version goes in.
+#   No copy kept yet     As for a local change, since the two cannot be told
+#                        apart. This happens once per file.
 #
-# The prompt is why this script needs a terminal. On a VM set up before ucf
-# was used there is no record yet, so the first prompt for each file has no
-# merge choice.
+# Only the newest BACKUP_KEEP backup folders are kept.
+#
+# ~/.gitconfig belongs to the VM, not the repo: `gh auth setup-git` writes
+# credential settings into it at each login. The repo's git settings go to
+# ~/.config/git/config, which git also reads.
 #
 # Options:
-#   --dry-run   Report what would happen. Changes nothing and asks nothing.
+#   --dry-run   Report what would happen, and change nothing.
 #
 set -euo pipefail
 
@@ -35,6 +34,7 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 USER_NAME=""   # required; set from the arguments below
 USER_HOME=""
 SRC_DIR="${REPO_DIR}/dotfiles-ai"
+BACKUP_KEEP=2
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -66,14 +66,6 @@ if [[ "${EUID}" -ne 0 ]]; then
     echo "ERROR: run this script as root — sudo $(basename "$0")" >&2
     exit 1
 fi
-if (( ! DRY_RUN )) && [[ ! -t 0 ]]; then
-    echo "ERROR: run this script from a terminal — ucf may ask about files with local changes" >&2
-    exit 1
-fi
-if ! command -v ucf &>/dev/null; then
-    echo "ERROR: ucf is not installed — run install-system-tools.sh first" >&2
-    exit 1
-fi
 if [[ ! -d "$SRC_DIR" ]]; then
     echo "ERROR: no dotfiles directory at ${SRC_DIR}" >&2
     exit 1
@@ -89,93 +81,85 @@ if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
     exit 1
 fi
 
-# The noninteractive frontend answers every prompt with its default, which
-# keeps the local file. That is the choice this script exists to offer.
-if [[ "${DEBIAN_FRONTEND:-}" == "noninteractive" ]]; then
-    unset DEBIAN_FRONTEND
-fi
-
-# --debconf-ok lets ucf use a debconf instance that is already running.
-UCF_ARGS=(--three-way --debconf-ok)
-
-# Where ucf keeps its records. --state-dir moves it; this must agree.
-UCF_STATE_DIR="${UCF_STATE_DIR:-/var/lib/ucf}"
-FAILED=0
+# The versions installed last. Root's, so the agent user cannot change them.
+STATE_DIR="/var/lib/slopbot/dotfiles/${USER_NAME}"
+BACKUP_ROOT="${USER_HOME}/.dotfile-backups"
+BACKUP_DIR="${BACKUP_ROOT}/$(date +%Y-%m-%dT%H-%M-%S)"
+BACKED_UP=()
 
 # ---------------------------------------------------------------------------
-
-# The md5sum ucf recorded when it last supplied this file, if it has one.
-ucf_lastsum() {
-    [[ -f "${UCF_STATE_DIR}/hashfile" ]] || return 1
-    awk -v d="$1" '$2 == d { print $1; found = 1 } END { exit !found }' \
-        "${UCF_STATE_DIR}/hashfile"
-}
-
+# Move a file into this run's backup folder, with the version it came from.
 # ---------------------------------------------------------------------------
-# --dry-run: say what ucf would do with one file. ucf's own --no-action is
-# no use here, because it still asks, and its answer to keep the local file
-# still writes <file>.ucf-dist.
-# ---------------------------------------------------------------------------
-report_dotfile() {
-    local src="$1" dest="$2" last srcsum
+backup_file() {
+    local rel="$1"
 
-    if [[ ! -e "$dest" ]]; then
-        if ucf_lastsum "$dest" >/dev/null; then
-            echo "    ${dest} (deleted — would put the repo version back)"
-        else
-            echo "    ${dest} (would install)"
-        fi
-        return
-    fi
-    if cmp -s "$src" "$dest"; then
-        echo "    ${dest} (no change)"
-        return
-    fi
-    if ! last="$(ucf_lastsum "$dest")"; then
-        echo "    ${dest} (no ucf record — would ask, without a merge choice)"
-        return
-    fi
-    srcsum="$(md5sum < "$src" | cut -d" " -f1)"
-    if [[ "$srcsum" == "$last" ]]; then
-        echo "    ${dest} (local changes, and no new repo version — no change)"
-    elif [[ "$(md5sum < "$dest" | cut -d" " -f1)" == "$last" ]]; then
-        echo "    ${dest} (would install the repo version)"
-    else
-        echo "    ${dest} (local changes, and a new repo version — would ask)"
+    BACKED_UP+=("$rel")
+    (( DRY_RUN )) && return
+    mkdir -p "$(dirname "${BACKUP_DIR}/${rel}")"
+    mv "${USER_HOME}/${rel}" "${BACKUP_DIR}/${rel}"
+    if [[ -f "${STATE_DIR}/${rel}" ]]; then
+        cp "${STATE_DIR}/${rel}" "${BACKUP_DIR}/${rel}.base"
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Install one file. ucf keeps local changes, and asks about them.
+# Install one file, and back up the file on disk if it has local changes.
 # ---------------------------------------------------------------------------
 install_dotfile() {
-    local src="$1" dest="$2" rc=0
-    local -a force=()
+    local src="$1" rel="$2"
+    local dest="${USER_HOME}/${rel}" last="${STATE_DIR}/${rel}" note dry
+
+    if [[ ! -e "$dest" ]]; then
+        note="installed"
+        dry="would install"
+    elif cmp -s "$src" "$dest"; then
+        note="no change"
+        dry="no change"
+    elif [[ -f "$last" ]] && cmp -s "$last" "$dest"; then
+        note="updated"
+        dry="would update"
+    elif [[ -f "$last" ]]; then
+        note="local changes backed up, then updated"
+        dry="local changes — would back up, then update"
+        backup_file "$rel"
+    else
+        note="no record of the last version — backed up, then updated"
+        dry="no record of the last version — would back up, then update"
+        backup_file "$rel"
+    fi
 
     if (( DRY_RUN )); then
-        report_dotfile "$src" "$dest"
+        echo "    ${dest} (${dry})"
         return
     fi
-
-    mkdir -p "$(dirname "$dest")"
-
-    # A file deleted on the VM gets the repo version back. Without this, ucf
-    # asks about it when the repo version has changed.
-    if [[ ! -e "$dest" ]]; then
-        force=(env UCF_FORCE_CONFFMISS=1)
+    if [[ "$note" != "no change" ]]; then
+        mkdir -p "$(dirname "$dest")"
+        install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
     fi
-
-    "${force[@]}" ucf "${UCF_ARGS[@]}" "$src" "$dest" || rc=$?
-    if (( rc )); then
-        echo "    ${dest} (ERROR: ucf exited ${rc} — file untouched)" >&2
-        FAILED=1
-    fi
+    install -D -m 600 "$src" "$last"
+    echo "    ${dest} (${note})"
 }
+
+# ---------------------------------------------------------------------------
+# The repo's git settings moved from ~/.gitconfig to ~/.config/git/config. On
+# the first run after that, ~/.gitconfig still holds the old repo settings,
+# which would override the new file. Back it up and start it empty;
+# `gh auth setup-git` puts its settings back at the next login.
+# ---------------------------------------------------------------------------
+if [[ -f "${USER_HOME}/.gitconfig" && -f "${SRC_DIR}/.config/git/config" \
+      && ! -f "${STATE_DIR}/.config/git/config" ]]; then
+    echo "==> Moving the git settings to ~/.config/git/config"
+    backup_file ".gitconfig"
+    if (( DRY_RUN )); then
+        echo "    ${USER_HOME}/.gitconfig (would be backed up and emptied)"
+    else
+        echo "    ${USER_HOME}/.gitconfig (backed up and emptied)"
+    fi
+fi
 
 echo "==> Installing dotfiles for ${USER_NAME}"
 while IFS= read -r src; do
-    rel="${src#"${SRC_DIR}"/}"
-    install_dotfile "$src" "${USER_HOME}/${rel}"
+    install_dotfile "$src" "${src#"${SRC_DIR}"/}"
 done < <(find "$SRC_DIR" -type f ! -name "*.example" | sort)
 
 # ---------------------------------------------------------------------------
@@ -197,31 +181,48 @@ while IFS= read -r src; do
 done < <(find "$SRC_DIR" -type f -name "*.example" | sort)
 
 if (( ! DRY_RUN )); then
+    # git config --global writes to ~/.config/git/config when ~/.gitconfig
+    # does not exist. Make sure it exists, so gh writes there instead.
+    [[ -e "${USER_HOME}/.gitconfig" ]] || touch "${USER_HOME}/.gitconfig"
     if ! grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
         echo 'source ~/.bashrc.local' >> "${USER_HOME}/.bashrc"
     fi
-    # mkdir and ucf make the files as root. Give them back to the user.
+    # mkdir, mv and touch make the files as root. Give them back to the user.
     chown -R "$USER_NAME:$USER_NAME" "$USER_HOME"
+
+    # Keep only the newest backup folders. Their names sort by date.
+    if [[ -d "$BACKUP_ROOT" ]]; then
+        while IFS= read -r old; do
+            rm -rf "$old"
+            echo "    ${old} (old backup removed)"
+        done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d | sort | head -n -"$BACKUP_KEEP")
+    fi
 fi
 
 # ---------------------------------------------------------------------------
-# List the files ucf leaves behind, so they get cleared up.
+# Report what was backed up, and how to compare it.
 # ---------------------------------------------------------------------------
-mapfile -t LEFTOVERS < <(
-    find "$USER_HOME" \( -name "*.ucf-dist" -o -name "*.ucf-old" -o -name "*.merge-error" \) \
-        2>/dev/null | sort
-)
-if (( ${#LEFTOVERS[@]} )); then
+if (( ${#BACKED_UP[@]} )); then
     echo
-    echo "==> ucf left these files for reference. Delete each one when you are done with it:"
-    for f in "${LEFTOVERS[@]}"; do
-        echo "    ${f}"
-    done
+    if (( DRY_RUN )); then
+        echo "==> These files would be backed up to ${BACKUP_DIR}:"
+        for rel in "${BACKED_UP[@]}"; do
+            echo "    ~/${rel}"
+        done
+    else
+        echo "==> Local changes were backed up to ${BACKUP_DIR}"
+        echo "    To compare with the new version:"
+        for rel in "${BACKED_UP[@]}"; do
+            new="${USER_HOME}/${rel}"
+            # ~/.gitconfig starts empty. The repo's settings are elsewhere.
+            [[ "$rel" == ".gitconfig" ]] && new="${USER_HOME}/.config/git/config"
+            echo "    diff ${BACKUP_DIR}/${rel} ${new}"
+        done
+        if [[ -n "$(find "$BACKUP_DIR" -name "*.base" -print -quit)" ]]; then
+            echo "    Each <file>.base is the version your changes were made to."
+        fi
+    fi
 fi
 
 echo
-if (( FAILED )); then
-    echo "Done, with errors above."
-    exit 1
-fi
 echo "Done."

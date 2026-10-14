@@ -7,7 +7,6 @@
 #   - build-essential  (C toolchain required by Rust crates and other native builds)
 #   - zip / unzip
 #   - tzdata  (timezone database)
-#   - ucf  (merges config file changes; used by sync-ai-user.sh)
 #   - apptainer  (requires SUID binary; must be system-level)
 #
 set -euo pipefail
@@ -20,7 +19,7 @@ VM_TIMEZONE="${VM_TIMEZONE:-Australia/Adelaide}"
 # ---------------------------------------------------------------------------
 echo "==> Installing common utilities"
 apt-get update -q
-apt-get install -y build-essential zip unzip tzdata ucf
+apt-get install -y build-essential zip unzip tzdata
 
 # ---------------------------------------------------------------------------
 # Timezone
