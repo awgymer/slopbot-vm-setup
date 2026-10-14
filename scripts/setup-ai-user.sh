@@ -89,6 +89,8 @@ STRAY=""
 while IFS= read -r entry; do
     [[ -n "$entry" ]] || continue
     name="$(basename "$entry")"
+    # An ext4 volume mounted at the root has a lost+found of its own.
+    [[ "$name" == "lost+found" ]] && continue
     if [[ ! -d "$entry" ]] || ! id "$name" &>/dev/null; then
         STRAY="${STRAY}    ${entry}"$'\n'
     fi
