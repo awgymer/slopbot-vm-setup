@@ -1,0 +1,29 @@
+# PATH, tools and credentials for every shell of the agent user.
+#
+# ~/.bash_profile sources this file for a login shell, and ~/.bashrc.local
+# sources it for an interactive one. The guard keeps one shell from loading
+# it twice. It is not exported, so a child shell loads the file again and
+# gets the nvm and sdk functions, which do not pass to a child.
+[[ -n "${AGENT_TOOLS_LOADED:-}" ]] && return 0
+AGENT_TOOLS_LOADED=1
+
+# User-local bin (claude, uv, nextflow, gh, etc.)
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# nvm
+export NVM_DIR="${HOME}/.nvm"
+[[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
+
+# Rust
+[[ -f "${HOME}/.cargo/env" ]] && source "${HOME}/.cargo/env"
+
+# Credentials: API keys, tokens, git identity
+# Copy .bash_secrets.example to ~/.bash_secrets and fill in values.
+if [[ -f "${HOME}/.bash_secrets" ]]; then
+    source "${HOME}/.bash_secrets"
+    [[ -n "${GH_TOKEN:-}" ]] && gh auth setup-git 2>/dev/null || true
+fi
+
+# SDKMAN! — must be last
+export SDKMAN_DIR="${HOME}/.sdkman"
+[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
