@@ -40,7 +40,7 @@ sudo ./scripts/setup-ai-user.sh claude
 
 - Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
 - Installs the agent user dotfiles, backing up any local changes
-- Creates `/workspace/<username>`, owned by the agent user and its own group, mode 2770. `/workspace` itself belongs to `ubuntu`
+- Creates `/workspace/<username>`, owned by the agent user and its own group, mode 2770. `/workspace` itself belongs to `ubuntu`, mode 751, so an agent can enter its own directory but cannot list the others. The script stops if the agent's primary group is not private to it
 - Adds `ubuntu` to the agent group, so `ubuntu` has full access to every agent workspace while no agent can reach another one
 - Installs shared tools for the agent user (see below)
 - Installs Claude Code via native installer
@@ -166,12 +166,14 @@ sudo rm /home/claude/.thefile /var/lib/slopbot/dotfiles/claude/.thefile
 Each agent user gets its own directory. `WORKSPACE_ROOT` is set in `/etc/environment`, and each agent shell sets `WORKSPACE` from it:
 
 ```
-/workspace              ubuntu:ubuntu    755
+/workspace              ubuntu:ubuntu    751
 /workspace/claude       claude:claude    2770
 /workspace/bob          bob:bob          2770
 ```
 
-`ubuntu` is a member of the `claude` and `bob` groups, so it can read and write both. `claude` is not in `bob`'s group, so the agents are kept apart. The setgid bit makes new files take the directory group, and the agent's `umask 007` leaves them writable by that group.
+`ubuntu` is a member of the `claude` and `bob` groups, so it can read and write both. `claude` is not in `bob`'s group, so the agents are kept apart, and `/workspace` has no read bit for others, so `claude` cannot list it to learn that `bob` exists. The setgid bit makes new files take the directory group, and the agent's `umask 007` leaves them writable by that group.
+
+The agent's primary group must be private to it, as `adduser` makes it. The script stops with an error if the account was made with a shared primary group such as `users`, since every member of that group would reach the workspace. It also warns about any other user in the group, whether as a supplementary member or through their primary group.
 
 A new group takes effect at the next login, so log out and back in after adding an agent.
 
