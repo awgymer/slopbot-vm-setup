@@ -180,10 +180,29 @@ fi
 # Apptainer (used for Nextflow container processes) works without this via
 # its SUID helper binary — ensure Apptainer is installed from the official
 # Ubuntu package so the SUID binary is present.
+#
+# unprivileged_userns_clone is a Debian patch that not every Ubuntu kernel
+# has. apparmor_restrict_unprivileged_userns is the knob that Ubuntu
+# supports since 24.04, and apparmor_restrict_unprivileged_unconfined
+# closes the way around it through a change to the unconfined profile.
+# Only the keys that this kernel has are written, since a key that the
+# kernel lacks makes sysctl --system fail and stop this script.
 echo "==> Disabling unprivileged user namespaces"
-cat > /etc/sysctl.d/99-agent-hardening.conf <<'EOF'
-kernel.unprivileged_userns_clone = 0
-EOF
+SYSCTL_FILE="/etc/sysctl.d/99-agent-hardening.conf"
+USERNS_KEYS=0
+: > "$SYSCTL_FILE"
+for entry in "kernel.unprivileged_userns_clone = 0" \
+             "kernel.apparmor_restrict_unprivileged_userns = 1" \
+             "kernel.apparmor_restrict_unprivileged_unconfined = 1"; do
+    key="${entry%% *}"
+    if [[ -e "/proc/sys/${key//.//}" ]]; then
+        echo "$entry" >> "$SYSCTL_FILE"
+        USERNS_KEYS=1
+    fi
+done
+if (( ! USERNS_KEYS )); then
+    echo "WARNING: this kernel has no sysctl to disable unprivileged user namespaces" >&2
+fi
 sysctl --system -q
 
 # --- 2. Cloud metadata endpoint block ----------------------------------------
@@ -359,8 +378,11 @@ echo
 echo "WORKSPACE_ROOT env (global):"
 grep '^WORKSPACE_ROOT=' /etc/environment || echo "  (not set)"
 echo
-echo "Unprivileged user namespaces:"
-sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not available)"
+echo "Unprivileged user namespaces (at least one key must exist):"
+for key in kernel.unprivileged_userns_clone kernel.apparmor_restrict_unprivileged_userns \
+           kernel.apparmor_restrict_unprivileged_unconfined; do
+    echo "  ${key} = $(sysctl -n "$key" 2>/dev/null || echo '(not in this kernel)')"
+done
 echo
 echo "/proc options (hidepid=invisible expected):"
 findmnt -no OPTIONS /proc 2>/dev/null || echo "  (not available)"
