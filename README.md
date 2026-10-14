@@ -95,7 +95,7 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 
 | File | Purpose |
 |------|---------|
-| `.bashrc.local` | PATH, tool init, auto-cd to `$WORKSPACE_ROOT/<username>`, sources `~/.bash_secrets` |
+| `.bashrc.local` | PATH, tool init, auto-cd to `$WORKSPACE_ROOT/<username>`, sources `~/.bash_secrets`. Interactive shells only — see [Non-interactive shells](#non-interactive-shells) |
 | `.config/git/config` | Git defaults (no user identity — set via `~/.bash_secrets`). `~/.gitconfig` is left to the VM — see below |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
@@ -176,6 +176,14 @@ Each agent user gets its own directory. `WORKSPACE_ROOT` is set in `/etc/environ
 The agent's primary group must be private to it, as `adduser` makes it. The script stops with an error if the account was made with a shared primary group such as `users`, since every member of that group would reach the workspace. It also warns about any other user in the group, whether as a supplementary member or through their primary group.
 
 A new group takes effect at the next login, so log out and back in after adding an agent.
+
+#### Non-interactive shells
+
+`~/.bashrc` returns early for a non-interactive shell, so `.bashrc.local` alone would leave `become claude claude -p "..."` with umask 022 and no `WORKSPACE`. The script sets both another way as well:
+
+- A sudoers file, `/etc/sudoers.d/90-agent-user-<username>`, gives every command that `sudo` runs as the agent umask 007. `become` goes through `sudo`, so this covers it
+- The account's GECOS field holds `umask=007`, which `pam_umask` applies on the other login paths, such as `login` or `machinectl`
+- `/etc/profile.d/agent-workspace.sh` sets `WORKSPACE` for every login shell, such as `sudo -iu claude`. A shell that is not a login shell, such as `sudo -u claude bash -c ...`, gets the umask but not `WORKSPACE`
 
 On a VM set up by an earlier version, `/workspace` belongs to one agent and holds its files. The script does not take the directory over while anything other than agent directories is in it. Move the files into `/workspace/<username>/` first, then run it again.
 
