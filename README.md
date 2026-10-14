@@ -191,6 +191,8 @@ A new group takes effect at the next login, so log out and back in after adding 
 
 On a VM set up by an earlier version, `/workspace` belongs to one agent and holds its files. The script does not take the directory over while anything other than agent directories is in it. Move the files into `/workspace/<username>/` first, then run it again.
 
+`/workspace` does not have to be a mount. Without one, the script makes a plain directory on the root disk. To keep the agents' work on its own volume, mount it at `/workspace` before the first agent setup. The `lost+found` directory of an ext4 volume is ignored. A volume mounted after the fact hides the files already there: copy them onto the volume, mount it, then run `setup-ai-user.sh` again for each agent to restore the ownership and modes.
+
 #### Non-interactive shells
 
 `~/.bashrc` returns early for a non-interactive shell, so `.bashrc.local` is only read by an interactive one. The PATH, the tools and `~/.bash_secrets` are in `.bash_tools`, which `.bash_profile` loads for every login shell. So `become claude claude -p "..."` and `become claude gh pr list` have the same tools and credentials as an interactive session. A shell that is neither a login shell nor interactive, such as `sudo -u claude bash -c ...`, has none of them.
