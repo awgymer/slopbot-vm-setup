@@ -262,6 +262,57 @@ if ! mount -o "remount,${PROC_OPTS}" /proc 2>/dev/null; then
     echo "WARNING: could not remount /proc — the fstab entry applies at the next boot" >&2
 fi
 
+# --- 5. Private /tmp and /var/tmp --------------------------------------------
+# /tmp and /var/tmp are shared by every user. File names are visible to
+# everyone, and a file made with a 022 umask is readable by everyone.
+# pam_namespace gives each agent its own instance of both, mounted over the
+# real one for the session. It runs as root inside PAM, so the disabled user
+# namespaces do not stop it. Only the agents are listed, so ubuntu and root
+# keep the real directories and can look into an instance at
+# /tmp/.inst/<username>.
+#
+# The agent list is built from the nftables files, which are the record of
+# which agents exist. A pam-auth-update profile puts the module into
+# common-session, and survives package updates. pam_namespace needs the
+# parent of the instances to exist with mode 000, so systemd-tmpfiles makes
+# it at boot and never cleans it.
+echo "==> Giving ${USER_NAME} a private /tmp and /var/tmp"
+AGENTS="$(for f in "${NFT_DIR}"/90-agent-user-*.nft; do
+    basename "$f" .nft | sed 's/^90-agent-user-//'
+done | paste -sd,)"
+mkdir -p /etc/security/namespace.d
+cat > /etc/security/namespace.d/agent-users.conf <<EOF
+# Written by setup-ai-user.sh. Each listed agent gets its own instance of
+# the directory, at <instance_prefix><username>.
+# polydir    instance_prefix    method    users (~ means only these)
+/tmp         /tmp/.inst/        user      ~${AGENTS}
+/var/tmp     /var/tmp/.inst/    user      ~${AGENTS}
+EOF
+
+cat > /etc/tmpfiles.d/agent-tmp.conf <<'EOF'
+# Parents of the private /tmp instances of the agent users (pam_namespace).
+# Mode 000 is required. X keeps the cleaner from removing them.
+d /tmp/.inst     0000 root root -
+d /var/tmp/.inst 0000 root root -
+X /tmp/.inst
+X /var/tmp/.inst
+EOF
+systemd-tmpfiles --create /etc/tmpfiles.d/agent-tmp.conf 2>/dev/null \
+    || install -d -m 000 -o root -g root /tmp/.inst /var/tmp/.inst
+
+cat > /usr/share/pam-configs/agent-namespace <<'EOF'
+Name: Private /tmp for agent users
+Default: yes
+Priority: 0
+Session-Type: Additional
+Session:
+	required	pam_namespace.so
+EOF
+if ! pam-auth-update --package --enable agent-namespace 2>/dev/null; then
+    echo "WARNING: pam-auth-update failed — add 'session required pam_namespace.so'" >&2
+    echo "         to /etc/pam.d/common-session by hand" >&2
+fi
+
 # ===========================================================================
 # OPTIONAL HARDENING — uncomment to enable
 # ===========================================================================
@@ -313,6 +364,14 @@ sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not av
 echo
 echo "/proc options (hidepid=invisible expected):"
 findmnt -no OPTIONS /proc 2>/dev/null || echo "  (not available)"
+echo
+echo "Private /tmp (every agent should be listed, and the module present):"
+grep -h '^/tmp' /etc/security/namespace.d/agent-users.conf 2>/dev/null || echo "  (not configured)"
+if grep -q pam_namespace /etc/pam.d/common-session 2>/dev/null; then
+    echo "  pam_namespace is in common-session"
+else
+    echo "  pam_namespace is NOT in common-session"
+fi
 echo
 echo "nftables (metadata block):"
 nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
