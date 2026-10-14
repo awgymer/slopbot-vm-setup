@@ -1,12 +1,14 @@
-# Allow workspace group (ubuntu) to write files created by claude.
+# Files made here take the agent's own group, which ubuntu belongs to.
 umask 007
 
 # Interactive-only conveniences (aliases / auto-cd).
-# WORKSPACE itself is set globally via /etc/environment.
+# Each agent user has its own directory under WORKSPACE_ROOT, which is set
+# globally via /etc/environment.
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
-cd "${WORKSPACE:-/workspace}" 2>/dev/null || true
+export WORKSPACE="${WORKSPACE_ROOT:-/workspace}/$(id -un)"
+cd "$WORKSPACE" 2>/dev/null || true
 
 # Claude
 alias cc='claude'

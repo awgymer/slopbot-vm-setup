@@ -21,9 +21,9 @@ if [[ ! "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
     echo "ERROR: '${USER_NAME}' is not a valid user name" >&2
     exit 2
 fi
-WORKSPACE="/workspace"
-WORKSPACE_GROUP="workspace"
+WORKSPACE_ROOT="/workspace"
 USER_HOME="/home/${USER_NAME}"
+USER_WORKSPACE="${WORKSPACE_ROOT}/${USER_NAME}"
 
 # ---------------------------------------------------------------------------
 # Create user
@@ -55,26 +55,59 @@ if [ -n "$SUDOERS_HITS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Workspace group (ubuntu + the agent user share read access to /workspace)
+# Workspace
+#
+# WORKSPACE_ROOT belongs to ubuntu and holds one directory per agent user.
+# Each agent owns its own directory, with its own group. ubuntu joins that
+# group, so ubuntu has full access to every workspace, and no agent can
+# reach the workspace of another.
 # ---------------------------------------------------------------------------
-echo "==> Creating workspace group '${WORKSPACE_GROUP}'"
-if ! getent group "$WORKSPACE_GROUP" >/dev/null; then
-    groupadd "$WORKSPACE_GROUP"
-fi
-usermod -aG "$WORKSPACE_GROUP" "$USER_NAME"
-if id ubuntu &>/dev/null; then
-    usermod -aG "$WORKSPACE_GROUP" ubuntu
+echo "==> Creating ${USER_WORKSPACE}"
+mkdir -p "$WORKSPACE_ROOT"
+
+# An earlier version of this script gave the root itself to one agent. Take
+# it over only when it holds nothing but agent directories, so that files
+# from such a VM are left for a person to move.
+STRAY=""
+while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    name="$(basename "$entry")"
+    if [[ ! -d "$entry" ]] || ! id "$name" &>/dev/null; then
+        STRAY="${STRAY}    ${entry}"$'\n'
+    fi
+done < <(find "$WORKSPACE_ROOT" -mindepth 1 -maxdepth 1 2>/dev/null)
+
+if [[ -n "$STRAY" ]]; then
+    echo "WARNING: ${WORKSPACE_ROOT} holds things that are not agent directories:" >&2
+    printf '%s' "$STRAY" >&2
+    echo "         Leaving ${WORKSPACE_ROOT} as it is. Move them into" >&2
+    echo "         ${USER_WORKSPACE}/ and run this script again." >&2
+else
+    if id ubuntu &>/dev/null; then
+        chown ubuntu:ubuntu "$WORKSPACE_ROOT"
+    fi
+    chmod 755 "$WORKSPACE_ROOT"
 fi
 
-# ---------------------------------------------------------------------------
-# Workspace
-# ---------------------------------------------------------------------------
-echo "==> Creating workspace"
-mkdir -p "$WORKSPACE"
-chown "$USER_NAME:$WORKSPACE_GROUP" "$WORKSPACE"
-# 2770: setgid so new files/dirs inherit the 'workspace' group;
+# adduser makes a group for each user, so this is the agent's own group.
+USER_GROUP="$(id -gn "$USER_NAME")"
+MEMBERS="$(getent group "$USER_GROUP" | cut -d: -f4)"
+if [[ -n "${MEMBERS//ubuntu/}" ]]; then
+    echo "WARNING: group '${USER_GROUP}' has other members (${MEMBERS})." >&2
+    echo "         They will reach ${USER_WORKSPACE} as well." >&2
+fi
+
+mkdir -p "$USER_WORKSPACE"
+chown "${USER_NAME}:${USER_GROUP}" "$USER_WORKSPACE"
+# 2770: setgid so new files take the agent's group, which ubuntu is in;
 #       owner rwx, group rwx, other none.
-chmod 2770 "$WORKSPACE"
+chmod 2770 "$USER_WORKSPACE"
+
+# ubuntu joins the agent's group, for full access to that workspace.
+# A login that is already open picks the group up at the next login.
+if id ubuntu &>/dev/null; then
+    usermod -aG "$USER_GROUP" ubuntu
+fi
 
 # ---------------------------------------------------------------------------
 # Lock down the default ubuntu home (if present)
@@ -113,9 +146,9 @@ usermod -s /bin/bash "$USER_NAME"
 # ---------------------------------------------------------------------------
 # Environment + interactive niceties
 # ---------------------------------------------------------------------------
-echo "==> Setting global WORKSPACE env var"
-if ! grep -q '^WORKSPACE=' /etc/environment 2>/dev/null; then
-    echo "WORKSPACE=${WORKSPACE}" >> /etc/environment
+echo "==> Setting global WORKSPACE_ROOT env var"
+if ! grep -q '^WORKSPACE_ROOT=' /etc/environment 2>/dev/null; then
+    echo "WORKSPACE_ROOT=${WORKSPACE_ROOT}" >> /etc/environment
 fi
 
 # Dotfiles are copies, not symlinks, because this repo is in the ubuntu home,
@@ -158,31 +191,47 @@ sysctl --system -q
 # most other cloud providers. From inside the VM it serves IAM credentials
 # with no authentication required — a direct cloud-escape vector.
 # The IPv6 address is the AWS IMDSv2 equivalent (fd00:ec2::254).
+#
+# The drop rules match a set of agent UIDs, so every agent shares them. The
+# base file makes the table, the set and the rules. Each agent has its own
+# file that adds its UID to the set, and those files are the record of which
+# agents exist. The include in nftables.conf loads them in name order: the
+# base file (80) before the agent files (90). Adding a set element is
+# idempotent, and the chain flush in the base file leaves the set alone.
 echo "==> Blocking cloud metadata endpoint for ${USER_NAME}"
 UID_NUM="$(id -u "$USER_NAME")"
-nft add table inet agentfilter 2>/dev/null || true
-nft add chain inet agentfilter out '{ type filter hook output priority 0; policy accept; }' 2>/dev/null || true
-nft flush chain inet agentfilter out 2>/dev/null || true
-nft add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid "$UID_NUM" drop
-nft add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid "$UID_NUM" drop
+NFT_DIR="/etc/nftables.d"
+NFT_BASE="${NFT_DIR}/80-agentfilter.nft"
+mkdir -p "$NFT_DIR"
 
-# Persist across reboots via a nftables drop-in file.
-# The imperative 'add/flush' form is idempotent if the service restarts.
-mkdir -p /etc/nftables.d
-cat > /etc/nftables.d/90-agent-metadata.nft <<EOF
+cat > "$NFT_BASE" <<'EOF'
 add table inet agentfilter
+add set inet agentfilter agent_uids { typeof meta skuid; }
 add chain inet agentfilter out { type filter hook output priority 0; policy accept; }
 flush chain inet agentfilter out
-add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid ${UID_NUM} drop
-add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid ${UID_NUM} drop
+add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid @agent_uids drop
+add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid @agent_uids drop
 EOF
+
+cat > "${NFT_DIR}/90-agent-user-${USER_NAME}.nft" <<EOF
+add element inet agentfilter agent_uids { ${UID_NUM} }
+EOF
+
+# Load only the drop-in files. nftables.conf starts with `flush ruleset`, so
+# loading it would remove every other table, such as those of ufw or Docker.
+nft -f "$NFT_BASE"
+for f in "${NFT_DIR}"/90-agent-user-*.nft; do
+    nft -f "$f"
+done
+
 if ! grep -q 'nftables.d' /etc/nftables.conf 2>/dev/null; then
     printf '\ninclude "/etc/nftables.d/*.nft"\n' >> /etc/nftables.conf
 fi
 systemctl enable nftables 2>/dev/null || true
 
-# To also restrict outbound to specific subnets (e.g. block internal network):
-# nft add rule inet agentfilter out ip daddr 10.0.0.0/8 meta skuid "$UID_NUM" drop
+# To also restrict outbound to specific subnets (e.g. block internal network),
+# add to the base file:
+# add rule inet agentfilter out ip daddr 10.0.0.0/8 meta skuid @agent_uids drop
 
 # --- 3. Deny scheduled-job persistence ---------------------------------------
 echo "==> Denying cron/at for ${USER_NAME}"
@@ -225,19 +274,29 @@ echo
 echo "Home perms:"
 ls -ld "$USER_HOME"
 echo
-echo "Workspace:"
-ls -ld "$WORKSPACE"
+echo "Workspace root:"
+ls -ld "$WORKSPACE_ROOT"
 echo
-echo "Workspace group members:"
-getent group "$WORKSPACE_GROUP" || echo "  (not found)"
+echo "Workspace for ${USER_NAME}:"
+ls -ld "$USER_WORKSPACE"
 echo
-echo "WORKSPACE env (global):"
-grep '^WORKSPACE=' /etc/environment || echo "  (not set)"
+echo "Members of group ${USER_GROUP} (ubuntu should be one):"
+getent group "$USER_GROUP" || echo "  (not found)"
+echo
+echo "WORKSPACE_ROOT env (global):"
+grep '^WORKSPACE_ROOT=' /etc/environment || echo "  (not set)"
 echo
 echo "Unprivileged user namespaces:"
 sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not available)"
 echo
 echo "nftables (metadata block):"
 nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
+nft list set inet agentfilter agent_uids 2>/dev/null || echo "  (no agent_uids set)"
+echo
+echo "Agents with a metadata block (one file each — every agent should be listed):"
+for f in "${NFT_DIR}"/90-agent-user-*.nft; do
+    [[ -e "$f" ]] || { echo "  (none)"; break; }
+    echo "  $(basename "$f" .nft | sed 's/^90-agent-user-//'): $(grep -oE '[0-9]+' "$f" | tail -n 1)"
+done
 echo
 echo "Done."
