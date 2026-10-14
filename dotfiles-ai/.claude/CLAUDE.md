@@ -78,3 +78,4 @@ If both a person and an agent read a document, use ASD-STE100.
 - Follow existing code style. Check neighboring files for patterns
 - Never co-author commits
 - Use "conventional commit" style
+- Never add links to claude code sessions to commits or PR bodies
