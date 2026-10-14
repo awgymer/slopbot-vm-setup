@@ -9,8 +9,10 @@ The setup is split into three scripts that must be run in order:
 | Script | Run as | Purpose |
 |--------|--------|---------|
 | `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer), and the system timezone |
-| `scripts/setup-ai-user.sh` | root | Creates and hardens the `claude` agent user |
+| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
+
+`scripts/sync-ai-user.sh` installs an agent user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating an agent user's dotfiles](#updating-an-agent-users-dotfiles).
 
 ## Usage
 
@@ -33,12 +35,13 @@ Run `timedatectl list-timezones` to see the valid names. Docker containers do no
 ### 2. Agent user setup (root)
 
 ```bash
-sudo ./scripts/setup-ai-user.sh
+sudo ./scripts/setup-ai-user.sh claude
 ```
 
-- Creates a non-privileged `claude` user with no sudo access
-- Creates `/workspace` (owned by `claude`, mode 700)
-- Installs shared tools for the `claude` user (see below)
+- Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
+- Installs the agent user dotfiles, backing up any local changes
+- Creates `/workspace`, owned by the agent user and the `workspace` group, mode 2770. A second agent user takes ownership of it, and shares it through the group
+- Installs shared tools for the agent user (see below)
 - Installs Claude Code via native installer
 - Applies security hardening:
   - Disables unprivileged user namespaces
@@ -61,7 +64,7 @@ After running, log out and back in, then run `p10k configure` to set up your pro
 
 ## Shared tools (`install-user-tools.sh`)
 
-Run automatically for both the `ubuntu` and `claude` users. Installs:
+Run automatically for both the `ubuntu` user and the agent user. Installs:
 
 - **SDKMAN! + Java LTS** — user-scoped JVM version management
 - **uv** — Python package/project manager
@@ -80,18 +83,77 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 |------|---------|
 | `.zshrc` | Main zsh config — tools, completions, p10k |
 | `.zaliases` | Shell and git aliases |
-| `.zfuncs` | Shell functions — `become <user>` to switch user |
+| `.zfuncs` | Shell functions — `become`, plus the `setup-ai-user` and `sync-ai-user` wrappers |
 | `.screenrc` | GNU screen config — scrollback, status bar, keybindings |
 | `.zlocal.example` | Template for machine-local secrets — copied to `~/.zlocal` automatically, never commit `~/.zlocal` |
 
-`dotfiles-claude/` contains the `claude` user's config, copied into `~` by `setup-ai-user.sh`. `.example` files are skipped and serve as templates only:
+`dotfiles-ai/` contains the agent user's config, installed into `~` by `sync-ai-user.sh`. `.example` files are skipped and serve as templates only:
 
 | File | Purpose |
 |------|---------|
 | `.bashrc.local` | PATH, tool init, auto-cd to `/workspace`, sources `~/.bash_secrets` |
-| `.gitconfig` | Git defaults (no user identity — set via `~/.bash_secrets`) |
+| `.config/git/config` | Git defaults (no user identity — set via `~/.bash_secrets`). `~/.gitconfig` is left to the VM — see below |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
+
+### Updating an agent user's dotfiles
+
+The agent user gets copies, not symlinks, because this repo lives in the `ubuntu` home, which is mode `700`. To pick up repo changes on a VM that is already set up:
+
+```bash
+git pull
+sudo ./scripts/sync-ai-user.sh --dry-run claude   # show what would change
+sudo ./scripts/sync-ai-user.sh claude             # apply
+```
+
+The `.zfuncs` wrappers do the same from anywhere, and find the repo themselves:
+
+```bash
+sync-ai-user --dry-run claude
+sync-ai-user bob
+setup-ai-user bob                # create and harden a new one
+```
+
+Every run installs the repo version of each file. A file you changed on the VM is moved to a backup folder first, so nothing is lost and nothing asks questions. `--dry-run` changes nothing.
+
+To tell a local change from a file that is only out of date, the script keeps a copy of each version it installs, in `/var/lib/slopbot/dotfiles/<user>/`.
+
+| Result | What happens |
+|--------|--------------|
+| No local changes | The repo version is installed |
+| Local changes | The file moves to `~/.dotfile-backups/<date>/`, next to `<file>.base`, the version you changed. The repo version is installed |
+| No copy kept yet — the first run on a VM set up before this script | As for local changes, since the two cannot be told apart. This happens once per file |
+| File deleted on the VM | The repo version is installed again |
+
+Each run lists what it backed up, with a `diff` command for each file. Only the 2 newest backup folders are kept (`BACKUP_KEEP` in the script).
+
+To take your changes into the new version:
+
+```bash
+B=/home/claude/.dotfile-backups/<date>
+sudo -u claude diff $B/.bashrc.local /home/claude/.bashrc.local
+sudo -u claude nano /home/claude/.bashrc.local   # copy across what you want
+```
+
+Or merge the three versions — yours, the one you changed, and the new one — with `git merge-file`. Conflicts are marked in the file, as in a git merge:
+
+```bash
+sudo -u claude git merge-file -p $B/.bashrc.local $B/.bashrc.local.base /home/claude/.bashrc.local > merged
+```
+
+#### `~/.gitconfig`
+
+`~/.gitconfig` belongs to the VM, not the repo. `.bashrc.local` runs `gh auth setup-git` at each login, which writes credential settings into it. The repo's git settings go to `~/.config/git/config` instead. Git reads both, and settings in `~/.gitconfig` win.
+
+The first run on a VM set up before this change backs up `~/.gitconfig` and leaves it empty, because it still holds the old repo settings, which would override the new file. `gh auth setup-git` puts its settings back at the next login.
+
+#### Removing a dotfile
+
+A dotfile taken out of the repo is not removed from the VM. Remove it by hand, with the copy the script keeps:
+
+```bash
+sudo rm /home/claude/.thefile /var/lib/slopbot/dotfiles/claude/.thefile
+```
 
 ### Setting up credentials for the claude user
 
