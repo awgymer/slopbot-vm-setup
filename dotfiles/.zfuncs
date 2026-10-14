@@ -6,13 +6,17 @@
 #   become                  -> root
 #   become claude           -> interactive login shell as claude
 #   become claude whoami    -> run one command as claude, then return
+# An agent user with a network namespace (see agent-netns) is entered
+# inside it, so that its shell has the network of the agent.
 become() {
     local user="${1:-root}"
+    local -a cmd=(sudo -iu "$user")
     (( $# )) && shift
-    if (( $# )); then
-        sudo -iu "$user" -- "$@"
+    (( $# )) && cmd+=(-- "$@")
+    if [[ -e "/run/netns/agent-${user}" ]]; then
+        sudo ip netns exec "agent-${user}" "${cmd[@]}"
     else
-        sudo -iu "$user"
+        "${cmd[@]}"
     fi
 }
 

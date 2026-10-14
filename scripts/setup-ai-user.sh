@@ -25,6 +25,23 @@ WORKSPACE_ROOT="/workspace"
 USER_HOME="/home/${USER_NAME}"
 USER_WORKSPACE="${WORKSPACE_ROOT}/${USER_NAME}"
 
+# The first two octets of the agent networks: each agent gets one /24 under
+# this /16. Change it if it clashes with your VPC. The value of the first
+# run is kept in /etc/default/agent-netns and wins over the default after
+# that, so every run agrees with the namespaces that exist.
+#   sudo AGENT_NET_PREFIX=10.201 ./setup-ai-user.sh claude
+if [[ -z "${AGENT_NET_PREFIX:-}" && -f /etc/default/agent-netns ]]; then
+    # shellcheck source=/dev/null
+    source /etc/default/agent-netns
+    AGENT_NET_PREFIX="${NET_PREFIX:-}"
+fi
+AGENT_NET_PREFIX="${AGENT_NET_PREFIX:-10.200}"
+if [[ ! "$AGENT_NET_PREFIX" =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    echo "ERROR: AGENT_NET_PREFIX must be two octets, such as 10.200" >&2
+    exit 2
+fi
+AGENT_DNS_IP="${AGENT_NET_PREFIX}.0.1"
+
 # ---------------------------------------------------------------------------
 # Create user
 # ---------------------------------------------------------------------------
@@ -203,6 +220,9 @@ done
 if (( ! USERNS_KEYS )); then
     echo "WARNING: this kernel has no sysctl to disable unprivileged user namespaces" >&2
 fi
+# The agent network namespaces (hardening step 6) reach the outside through
+# the VM, which forwards and masquerades their traffic.
+echo "net.ipv4.ip_forward = 1" >> "$SYSCTL_FILE"
 sysctl --system -q
 
 # --- 2. Cloud metadata endpoint block ----------------------------------------
@@ -217,19 +237,45 @@ sysctl --system -q
 # agents exist. The include in nftables.conf loads them in name order: the
 # base file (80) before the agent files (90). Adding a set element is
 # idempotent, and the chain flush in the base file leaves the set alone.
+#
+# The skuid rules catch an agent process that runs in the VM namespace. An
+# agent in its own network namespace (hardening step 6) sends through a
+# veth-agent* interface instead, so the base file also has rules for those:
+# no traffic between agents, no traffic from an agent to the VM except DNS,
+# no metadata endpoint, and masquerade for the rest.
 echo "==> Blocking cloud metadata endpoint for ${USER_NAME}"
 UID_NUM="$(id -u "$USER_NAME")"
 NFT_DIR="/etc/nftables.d"
 NFT_BASE="${NFT_DIR}/80-agentfilter.nft"
 mkdir -p "$NFT_DIR"
 
-cat > "$NFT_BASE" <<'EOF'
+cat > "$NFT_BASE" <<EOF
 add table inet agentfilter
 add set inet agentfilter agent_uids { typeof meta skuid; }
 add chain inet agentfilter out { type filter hook output priority 0; policy accept; }
 flush chain inet agentfilter out
 add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid @agent_uids drop
 add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid @agent_uids drop
+
+# Agent network namespaces: traffic that goes through the VM.
+add chain inet agentfilter fwd { type filter hook forward priority 0; policy accept; }
+flush chain inet agentfilter fwd
+add rule inet agentfilter fwd iifname "veth-agent*" oifname "veth-agent*" drop
+add rule inet agentfilter fwd iifname "veth-agent*" ip  daddr 169.254.169.254 drop
+add rule inet agentfilter fwd iifname "veth-agent*" ip6 daddr fd00:ec2::254   drop
+
+# Agent network namespaces: traffic to the VM itself. Only DNS, plus the
+# replies to connections that the VM opened to an agent.
+add chain inet agentfilter in { type filter hook input priority 0; policy accept; }
+flush chain inet agentfilter in
+add rule inet agentfilter in iifname "veth-agent*" ct state established,related accept
+add rule inet agentfilter in iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} udp dport 53 accept
+add rule inet agentfilter in iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} tcp dport 53 accept
+add rule inet agentfilter in iifname "veth-agent*" drop
+
+add chain inet agentfilter nat { type nat hook postrouting priority srcnat; policy accept; }
+flush chain inet agentfilter nat
+add rule inet agentfilter nat ip saddr ${AGENT_NET_PREFIX}.0.0/16 ip daddr != ${AGENT_NET_PREFIX}.0.0/16 masquerade
 EOF
 
 cat > "${NFT_DIR}/90-agent-user-${USER_NAME}.nft" <<EOF
@@ -332,6 +378,58 @@ if ! pam-auth-update --package --enable agent-namespace 2>/dev/null; then
     echo "         to /etc/pam.d/common-session by hand" >&2
 fi
 
+# --- 6. Network namespace ----------------------------------------------------
+# Without this, every agent shares the loopback and the VM address, so one
+# agent can connect to the dev servers of another, or of ubuntu, and can
+# list them with ss. agent-netns gives each agent its own namespace, with a
+# veth pair into the VM. The nftables rules above keep the namespaces
+# apart. The `become` function in dotfiles/.zfuncs enters the namespace.
+#
+# DNS: systemd-resolved listens on AGENT_DNS_IP for the agents. It binds
+# the address with SO_FREEBIND, so the order at boot does not matter.
+echo "==> Making a network namespace for ${USER_NAME}"
+install -m 755 "${SCRIPT_DIR}/agent-netns.sh" /usr/local/sbin/agent-netns
+echo "NET_PREFIX=${AGENT_NET_PREFIX}" > /etc/default/agent-netns
+
+cat > /etc/systemd/system/agent-netns@.service <<'EOF'
+[Unit]
+Description=Network namespace for agent user %i
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/agent-netns up %i
+ExecStop=/usr/local/sbin/agent-netns down %i
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/agent-netns.conf"
+RESOLVED_WANT="$(printf '[Resolve]\nDNSStubListenerExtra=%s\n' "$AGENT_DNS_IP")"
+if [[ "$(cat "$RESOLVED_DROPIN" 2>/dev/null)" != "$RESOLVED_WANT" ]]; then
+    mkdir -p "$(dirname "$RESOLVED_DROPIN")"
+    printf '%s\n' "$RESOLVED_WANT" > "$RESOLVED_DROPIN"
+    if systemctl is-active -q systemd-resolved 2>/dev/null; then
+        systemctl restart systemd-resolved
+    fi
+fi
+
+if systemctl daemon-reload 2>/dev/null \
+      && systemctl enable --now "agent-netns@${USER_NAME}" 2>/dev/null; then
+    agent-netns status
+else
+    echo "WARNING: could not start agent-netns@${USER_NAME} — is systemd running?" >&2
+    echo "         Without it, ${USER_NAME} shares the network of the VM." >&2
+fi
+
+if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    echo "WARNING: ufw is active. Its default forward policy is DROP, which" >&2
+    echo "         stops the agent namespaces. Set DEFAULT_FORWARD_POLICY=\"ACCEPT\"" >&2
+    echo "         in /etc/default/ufw, or add route rules for ${AGENT_NET_PREFIX}.0.0/16." >&2
+fi
+
 # ===========================================================================
 # OPTIONAL HARDENING — uncomment to enable
 # ===========================================================================
@@ -398,6 +496,16 @@ echo
 echo "nftables (metadata block):"
 nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
 nft list set inet agentfilter agent_uids 2>/dev/null || echo "  (no agent_uids set)"
+echo
+echo "nftables (agent namespaces):"
+nft list chain inet agentfilter fwd 2>/dev/null || echo "  (not loaded)"
+nft list chain inet agentfilter in  2>/dev/null || echo "  (not loaded)"
+echo
+echo "Network namespaces (every agent should be up):"
+agent-netns status 2>/dev/null || echo "  (agent-netns not installed)"
+echo
+echo "Network of ${USER_NAME}:"
+ip -n "agent-${USER_NAME}" -brief addr 2>/dev/null || echo "  (no namespace)"
 echo
 echo "Agents with a metadata block (one file each — every agent should be listed):"
 for f in "${NFT_DIR}"/90-agent-user-*.nft; do

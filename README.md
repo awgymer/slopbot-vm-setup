@@ -50,6 +50,7 @@ sudo ./scripts/setup-ai-user.sh claude
   - Denies cron and at access
   - Hides the processes of other users. `/proc` is mounted with `hidepid=invisible`, so an agent sees only its own processes in `ps`. Root and the `adm` group see everything, and `ubuntu` is added to `adm`. The setting is written to `/etc/fstab`, and a login that is already open picks up the group at the next login
   - Gives each agent a private `/tmp` and `/var/tmp`. `pam_namespace` mounts an instance of each over the real one for every session of a listed agent. Only agents are listed, in `/etc/security/namespace.d/agent-users.conf`, which the script rebuilds from the metadata files on every run. `ubuntu` and root keep the real directories and can look into an instance at `/tmp/.inst/<username>`. The module is added to `common-session` through a `pam-auth-update` profile
+  - Gives the agent its own network namespace, so it cannot reach the local services of other agents or of the VM — see [Network namespaces](#network-namespaces)
 
 ### 3. Ubuntu user setup (ubuntu user)
 
@@ -185,6 +186,46 @@ sudo -u claude nano /home/claude/.bash_secrets
 ```
 
 The file is sourced on every login. When `GH_TOKEN` is set, `gh auth setup-git` is run automatically to configure git credential helpers.
+
+### Network namespaces
+
+Without a namespace, every user on the VM shares the loopback address and the VM address. One agent can connect to a dev server, a Jupyter kernel or an MCP server that another agent started, and can list them with `ss`. So each agent runs in its own network namespace, with its own loopback.
+
+`setup-ai-user.sh` installs `scripts/agent-netns.sh` as `/usr/local/sbin/agent-netns`, and a systemd unit `agent-netns@<username>` that makes the namespace at boot. Each agent gets a /24 under `10.200.0.0/16`:
+
+```
+agent-claude    eth0 10.200.1.2  <->  veth-agent1 10.200.1.1 on the VM
+agent-bob       eth0 10.200.2.2  <->  veth-agent2 10.200.2.1 on the VM
+```
+
+The VM forwards and masquerades the traffic of the agents. The nftables rules in `/etc/nftables.d/80-agentfilter.nft` drop traffic between agents, drop traffic from an agent to the VM except DNS, and block the cloud metadata endpoint on that path too. `systemd-resolved` answers DNS for the agents on `10.200.0.1`.
+
+`become` enters the namespace when one exists for the user, so `become claude` has the network of the agent. A shell started another way, such as `sudo -iu claude`, has the network of the VM and only the metadata block applies to it.
+
+The agent side is reachable from the VM. To open a dev server that `claude` runs on port 8000:
+
+```bash
+curl http://10.200.1.2:8000
+```
+
+To manage the namespaces:
+
+```bash
+sudo agent-netns status                        # every agent, up or down, with its address
+sudo systemctl restart agent-netns@claude      # remake the namespace
+sudo systemctl disable --now agent-netns@bob   # remove it, now and at boot
+sudo rm /etc/slopbot/netns/bob                 # free the subnet of a removed agent
+```
+
+`agent-netns down <username>` removes a namespace by hand, but the unit makes it again at the next boot.
+
+The subnet is `10.200.0.0/16` by default. If that clashes with your network, give `AGENT_NET_PREFIX` to the first run: `sudo AGENT_NET_PREFIX=10.201 ./scripts/setup-ai-user.sh claude`. The value is kept in `/etc/default/agent-netns` and wins after that.
+
+Known limits:
+
+- The agents have IPv4 only.
+- If `ufw` is active, its default forward policy is `DROP`, which stops the agents. Set `DEFAULT_FORWARD_POLICY="ACCEPT"` in `/etc/default/ufw`, or add route rules for the agent subnet. The script warns when it sees `ufw` active.
+- To let an agent reach a service on the VM, such as a model server, add an accept rule for that port before the final drop in the `in` chain of the base file.
 
 ## Security model
 
