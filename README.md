@@ -4,13 +4,15 @@ Scripts to initialise an Ubuntu 26.04 VM for running autonomous AI agents (Claud
 
 ## Overview
 
-The setup is split into three scripts that must be run in order:
+The setup is split into three scripts. Run them in this order:
 
 | Script | Run as | Purpose |
 |--------|--------|---------|
 | `scripts/install-system-tools.sh` | root | System-level tools that require a SUID binary (Apptainer), and the system timezone |
-| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user |
 | `scripts/setup-ubuntu-user.sh` | ubuntu | Sets up the interactive shell environment for the ubuntu user |
+| `scripts/setup-ai-user.sh` | root | Creates and hardens an agent user |
+
+The system tools must come first: the user tools need `unzip` and a C toolchain. The two user scripts do not depend on each other. The ubuntu one goes second because it installs the `setup-ai-user` and `become` shell functions, which make the agent step easier.
 
 `scripts/sync-ai-user.sh` installs an agent user's dotfiles. `setup-ai-user.sh` calls it. Run it on its own to pick up repo changes later — see [Updating an agent user's dotfiles](#updating-an-agent-users-dotfiles).
 
@@ -22,7 +24,7 @@ The setup is split into three scripts that must be run in order:
 sudo ./scripts/install-system-tools.sh
 ```
 
-Installs Apptainer via the official PPA. Must be system-level because unprivileged user namespaces are disabled as part of the hardening in the next step.
+Installs Apptainer via the official PPA. Must be system-level because unprivileged user namespaces are disabled as part of the hardening in step 3.
 
 The script also sets the system timezone. A new VM uses UTC. The default is `Australia/Adelaide`. To use a different zone, give `VM_TIMEZONE` to `sudo`:
 
@@ -32,10 +34,30 @@ sudo VM_TIMEZONE=Europe/London ./scripts/install-system-tools.sh
 
 Run `timedatectl list-timezones` to see the valid names. Docker containers do not use the timezone of the host. Give the `TZ` environment variable to each container, as `.devcontainer/` does.
 
-### 2. Agent user setup (root)
+### 2. Ubuntu user setup (ubuntu user)
+
+```bash
+./scripts/setup-ubuntu-user.sh
+```
+
+Run from the repo root as the `ubuntu` user (not root). Sets up:
+
+- zsh + Powerlevel10k prompt
+- Dotfiles symlinked from `dotfiles/` into `~`, including the `become`, `setup-ai-user` and `sync-ai-user` shell functions
+- Shared tools (see below)
+
+After running, log out and back in, then run `p10k configure` to set up your prompt. A [Nerd Font](https://www.nerdfonts.com/) is required in your local terminal emulator for glyphs to render correctly.
+
+### 3. Agent user setup (root)
 
 ```bash
 sudo ./scripts/setup-ai-user.sh claude
+```
+
+Or, after step 2 and a new login, from anywhere:
+
+```bash
+setup-ai-user claude
 ```
 
 - Creates a non-privileged agent user with no sudo access. The name is required — `claude` unless you choose another
@@ -52,19 +74,7 @@ sudo ./scripts/setup-ai-user.sh claude
   - Gives each agent a private `/tmp` and `/var/tmp`. `pam_namespace` mounts an instance of each over the real one for every session of a listed agent. Only agents are listed, in `/etc/security/namespace.d/agent-users.conf`, which the script rebuilds from the metadata files on every run. `ubuntu` and root keep the real directories and can look into an instance at `/tmp/.inst/<username>`. The module is added to `common-session` through a `pam-auth-update` profile
   - Gives the agent its own network namespace, so it cannot reach the local services of other agents or of the VM — see [Network namespaces](#network-namespaces)
 
-### 3. Ubuntu user setup (ubuntu user)
-
-```bash
-./scripts/setup-ubuntu-user.sh
-```
-
-Run from the repo root as the `ubuntu` user (not root). Sets up:
-
-- zsh + Powerlevel10k prompt
-- Dotfiles symlinked from `dotfiles/` into `~`
-- Shared tools (see below)
-
-After running, log out and back in, then run `p10k configure` to set up your prompt. A [Nerd Font](https://www.nerdfonts.com/) is required in your local terminal emulator for glyphs to render correctly.
+The script adds `ubuntu` to the agent's group. Log out and back in afterwards, so that your shell has the group and can reach the workspace.
 
 ## Shared tools (`install-user-tools.sh`)
 
