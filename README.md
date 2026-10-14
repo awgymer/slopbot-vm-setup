@@ -117,6 +117,8 @@ setup-ai-user bob                # create and harden a new one
 
 Every run installs the repo version of each file. A file you changed on the VM is moved to a backup folder first, so nothing is lost and nothing asks questions. `--dry-run` changes nothing.
 
+The script reads and writes the home directory as the agent user, not as root. A symlink that the agent puts in its home cannot make the script write outside the home.
+
 To tell a local change from a file that is only out of date, the script keeps a copy of each version it installs, in `/var/lib/slopbot/dotfiles/<user>/`.
 
 | Result | What happens |
