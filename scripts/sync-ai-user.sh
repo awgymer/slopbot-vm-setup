@@ -20,6 +20,12 @@
 #
 # Only the newest BACKUP_KEEP backup folders are kept.
 #
+# Every read and write inside the home runs as the agent user, not as root.
+# The agent owns the home, and can put a symlink there that points outside
+# it. Root would follow the link. The agent cannot, because the kernel
+# checks its permissions. The agent cannot read the repo or STATE_DIR, so
+# the copies that go from root into the home arrive on stdin.
+#
 # ~/.gitconfig belongs to the VM, not the repo: `gh auth setup-git` writes
 # credential settings into it at each login. The repo's git settings go to
 # ~/.config/git/config, which git also reads.
@@ -88,6 +94,23 @@ BACKUP_DIR="${BACKUP_ROOT}/$(date +%Y-%m-%dT%H-%M-%S)"
 BACKED_UP=()
 
 # ---------------------------------------------------------------------------
+# Run a command as the agent user. runuser keeps the rest of the environment,
+# so HOME is set here and every path below is explicit.
+# ---------------------------------------------------------------------------
+as_user() {
+    runuser -u "$USER_NAME" -- env HOME="$USER_HOME" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Write stdin to a file in the home, as the agent user. The file is made
+# new, so a symlink in its place is removed and not followed.
+#   write_as_user <dest> <mode> < <source>
+# ---------------------------------------------------------------------------
+write_as_user() {
+    as_user sh -c 'rm -f -- "$1" && umask 077 && cat > "$1" && chmod "$2" "$1"' _ "$1" "$2"
+}
+
+# ---------------------------------------------------------------------------
 # Move a file into this run's backup folder, with the version it came from.
 # ---------------------------------------------------------------------------
 backup_file() {
@@ -95,10 +118,10 @@ backup_file() {
 
     BACKED_UP+=("$rel")
     (( DRY_RUN )) && return
-    mkdir -p "$(dirname "${BACKUP_DIR}/${rel}")"
-    mv "${USER_HOME}/${rel}" "${BACKUP_DIR}/${rel}"
+    as_user mkdir -p "$(dirname "${BACKUP_DIR}/${rel}")"
+    as_user mv "${USER_HOME}/${rel}" "${BACKUP_DIR}/${rel}"
     if [[ -f "${STATE_DIR}/${rel}" ]]; then
-        cp "${STATE_DIR}/${rel}" "${BACKUP_DIR}/${rel}.base"
+        write_as_user "${BACKUP_DIR}/${rel}.base" 644 < "${STATE_DIR}/${rel}"
     fi
 }
 
@@ -109,13 +132,13 @@ install_dotfile() {
     local src="$1" rel="$2"
     local dest="${USER_HOME}/${rel}" last="${STATE_DIR}/${rel}" note dry
 
-    if [[ ! -e "$dest" ]]; then
+    if ! as_user test -e "$dest"; then
         note="installed"
         dry="would install"
-    elif cmp -s "$src" "$dest"; then
+    elif as_user cmp -s - "$dest" < "$src"; then
         note="no change"
         dry="no change"
-    elif [[ -f "$last" ]] && cmp -s "$last" "$dest"; then
+    elif [[ -f "$last" ]] && as_user cmp -s - "$dest" < "$last"; then
         note="updated"
         dry="would update"
     elif [[ -f "$last" ]]; then
@@ -133,8 +156,8 @@ install_dotfile() {
         return
     fi
     if [[ "$note" != "no change" ]]; then
-        mkdir -p "$(dirname "$dest")"
-        install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
+        as_user mkdir -p "$(dirname "$dest")"
+        write_as_user "$dest" 644 < "$src"
     fi
     install -D -m 600 "$src" "$last"
     echo "    ${dest} (${note})"
@@ -146,8 +169,8 @@ install_dotfile() {
 # which would override the new file. Back it up and start it empty;
 # `gh auth setup-git` puts its settings back at the next login.
 # ---------------------------------------------------------------------------
-if [[ -f "${USER_HOME}/.gitconfig" && -f "${SRC_DIR}/.config/git/config" \
-      && ! -f "${STATE_DIR}/.config/git/config" ]]; then
+if as_user test -f "${USER_HOME}/.gitconfig" \
+      && [[ -f "${SRC_DIR}/.config/git/config" && ! -f "${STATE_DIR}/.config/git/config" ]]; then
     echo "==> Moving the git settings to ~/.config/git/config"
     backup_file ".gitconfig"
     if (( DRY_RUN )); then
@@ -169,13 +192,13 @@ echo "==> Installing example configs for ${USER_NAME}"
 while IFS= read -r src; do
     rel="${src#"${SRC_DIR}"/}"
     dest="${USER_HOME}/${rel%.example}"
-    if [[ -f "$dest" ]]; then
+    if as_user test -f "$dest"; then
         echo "    ${dest} (already exists, skipping)"
     elif (( DRY_RUN )); then
         echo "    ${dest} (would install from example)"
     else
-        mkdir -p "$(dirname "$dest")"
-        install -m 600 -o "$USER_NAME" -g "$USER_NAME" "$src" "$dest"
+        as_user mkdir -p "$(dirname "$dest")"
+        write_as_user "$dest" 600 < "$src"
         echo "    ${dest} (from example — fill in your values)"
     fi
 done < <(find "$SRC_DIR" -type f -name "*.example" | sort)
@@ -183,19 +206,17 @@ done < <(find "$SRC_DIR" -type f -name "*.example" | sort)
 if (( ! DRY_RUN )); then
     # git config --global writes to ~/.config/git/config when ~/.gitconfig
     # does not exist. Make sure it exists, so gh writes there instead.
-    [[ -e "${USER_HOME}/.gitconfig" ]] || touch "${USER_HOME}/.gitconfig"
-    if ! grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
-        echo 'source ~/.bashrc.local' >> "${USER_HOME}/.bashrc"
+    as_user sh -c '[ -e "$1" ] || touch "$1"' _ "${USER_HOME}/.gitconfig"
+    if ! as_user grep -q 'bashrc.local' "${USER_HOME}/.bashrc" 2>/dev/null; then
+        as_user sh -c 'echo "source ~/.bashrc.local" >> "$1"' _ "${USER_HOME}/.bashrc"
     fi
-    # mkdir, mv and touch make the files as root. Give them back to the user.
-    chown -R "$USER_NAME:$USER_NAME" "$USER_HOME"
 
     # Keep only the newest backup folders. Their names sort by date.
-    if [[ -d "$BACKUP_ROOT" ]]; then
+    if as_user test -d "$BACKUP_ROOT"; then
         while IFS= read -r old; do
-            rm -rf "$old"
+            as_user rm -rf -- "$old"
             echo "    ${old} (old backup removed)"
-        done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d | sort | head -n -"$BACKUP_KEEP")
+        done < <(as_user find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d | sort | head -n -"$BACKUP_KEEP")
     fi
 fi
 
@@ -218,7 +239,7 @@ if (( ${#BACKED_UP[@]} )); then
             [[ "$rel" == ".gitconfig" ]] && new="${USER_HOME}/.config/git/config"
             echo "    diff ${BACKUP_DIR}/${rel} ${new}"
         done
-        if [[ -n "$(find "$BACKUP_DIR" -name "*.base" -print -quit)" ]]; then
+        if [[ -n "$(as_user find "$BACKUP_DIR" -name "*.base" -print -quit)" ]]; then
             echo "    Each <file>.base is the version your changes were made to."
         fi
     fi
