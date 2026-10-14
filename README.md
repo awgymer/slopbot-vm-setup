@@ -46,7 +46,7 @@ sudo ./scripts/setup-ai-user.sh claude
 - Installs Claude Code via native installer
 - Applies security hardening:
   - Disables unprivileged user namespaces
-  - Blocks the cloud metadata endpoint (169.254.169.254) via nftables
+  - Blocks the cloud metadata endpoint (169.254.169.254) via nftables, for every agent user. Each agent has a file `/etc/nftables.d/90-agent-user-<username>.nft` that adds its UID to the blocked set. To remove an agent, delete its file and run `sudo nft delete element inet agentfilter agent_uids '{ <uid> }'`
   - Denies cron and at access
 
 ### 3. Ubuntu user setup (ubuntu user)

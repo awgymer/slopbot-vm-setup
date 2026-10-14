@@ -191,31 +191,47 @@ sysctl --system -q
 # most other cloud providers. From inside the VM it serves IAM credentials
 # with no authentication required — a direct cloud-escape vector.
 # The IPv6 address is the AWS IMDSv2 equivalent (fd00:ec2::254).
+#
+# The drop rules match a set of agent UIDs, so every agent shares them. The
+# base file makes the table, the set and the rules. Each agent has its own
+# file that adds its UID to the set, and those files are the record of which
+# agents exist. The include in nftables.conf loads them in name order: the
+# base file (80) before the agent files (90). Adding a set element is
+# idempotent, and the chain flush in the base file leaves the set alone.
 echo "==> Blocking cloud metadata endpoint for ${USER_NAME}"
 UID_NUM="$(id -u "$USER_NAME")"
-nft add table inet agentfilter 2>/dev/null || true
-nft add chain inet agentfilter out '{ type filter hook output priority 0; policy accept; }' 2>/dev/null || true
-nft flush chain inet agentfilter out 2>/dev/null || true
-nft add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid "$UID_NUM" drop
-nft add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid "$UID_NUM" drop
+NFT_DIR="/etc/nftables.d"
+NFT_BASE="${NFT_DIR}/80-agentfilter.nft"
+mkdir -p "$NFT_DIR"
 
-# Persist across reboots via a nftables drop-in file.
-# The imperative 'add/flush' form is idempotent if the service restarts.
-mkdir -p /etc/nftables.d
-cat > /etc/nftables.d/90-agent-metadata.nft <<EOF
+cat > "$NFT_BASE" <<'EOF'
 add table inet agentfilter
+add set inet agentfilter agent_uids { typeof meta skuid; }
 add chain inet agentfilter out { type filter hook output priority 0; policy accept; }
 flush chain inet agentfilter out
-add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid ${UID_NUM} drop
-add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid ${UID_NUM} drop
+add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid @agent_uids drop
+add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid @agent_uids drop
 EOF
+
+cat > "${NFT_DIR}/90-agent-user-${USER_NAME}.nft" <<EOF
+add element inet agentfilter agent_uids { ${UID_NUM} }
+EOF
+
+# Load only the drop-in files. nftables.conf starts with `flush ruleset`, so
+# loading it would remove every other table, such as those of ufw or Docker.
+nft -f "$NFT_BASE"
+for f in "${NFT_DIR}"/90-agent-user-*.nft; do
+    nft -f "$f"
+done
+
 if ! grep -q 'nftables.d' /etc/nftables.conf 2>/dev/null; then
     printf '\ninclude "/etc/nftables.d/*.nft"\n' >> /etc/nftables.conf
 fi
 systemctl enable nftables 2>/dev/null || true
 
-# To also restrict outbound to specific subnets (e.g. block internal network):
-# nft add rule inet agentfilter out ip daddr 10.0.0.0/8 meta skuid "$UID_NUM" drop
+# To also restrict outbound to specific subnets (e.g. block internal network),
+# add to the base file:
+# add rule inet agentfilter out ip daddr 10.0.0.0/8 meta skuid @agent_uids drop
 
 # --- 3. Deny scheduled-job persistence ---------------------------------------
 echo "==> Denying cron/at for ${USER_NAME}"
@@ -275,5 +291,12 @@ sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not av
 echo
 echo "nftables (metadata block):"
 nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
+nft list set inet agentfilter agent_uids 2>/dev/null || echo "  (no agent_uids set)"
+echo
+echo "Agents with a metadata block (one file each — every agent should be listed):"
+for f in "${NFT_DIR}"/90-agent-user-*.nft; do
+    [[ -e "$f" ]] || { echo "  (none)"; break; }
+    echo "  $(basename "$f" .nft | sed 's/^90-agent-user-//'): $(grep -oE '[0-9]+' "$f" | tail -n 1)"
+done
 echo
 echo "Done."
