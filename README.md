@@ -95,7 +95,9 @@ All tools are installed to `~/.local/bin`, `~/.sdkman`, `~/.nvm`, or `~/.cargo` 
 
 | File | Purpose |
 |------|---------|
-| `.bashrc.local` | PATH, tool init, auto-cd to `$WORKSPACE_ROOT/<username>`, sources `~/.bash_secrets`. Interactive shells only — see [Non-interactive shells](#non-interactive-shells) |
+| `.bash_tools` | PATH, tool init, sources `~/.bash_secrets`. Loaded once by every shell through the two files below |
+| `.bash_profile` | Login shells, interactive or not — sources `.bash_tools`, then `~/.profile` |
+| `.bashrc.local` | Interactive shells — sources `.bash_tools`, then aliases, `umask`, and auto-cd to `$WORKSPACE`. See [Non-interactive shells](#non-interactive-shells) |
 | `.config/git/config` | Git defaults (no user identity — set via `~/.bash_secrets`). `~/.gitconfig` is left to the VM — see below |
 | `.claude/CLAUDE.md` | Global agent guidelines — loaded by Claude Code for every session |
 | `.bash_secrets.example` | Template for credentials — copy to `~/.bash_secrets` and fill in |
@@ -177,15 +179,17 @@ The agent's primary group must be private to it, as `adduser` makes it. The scri
 
 A new group takes effect at the next login, so log out and back in after adding an agent.
 
+On a VM set up by an earlier version, `/workspace` belongs to one agent and holds its files. The script does not take the directory over while anything other than agent directories is in it. Move the files into `/workspace/<username>/` first, then run it again.
+
 #### Non-interactive shells
 
-`~/.bashrc` returns early for a non-interactive shell, so `.bashrc.local` alone would leave `become claude claude -p "..."` with umask 022 and no `WORKSPACE`. The script sets both another way as well:
+`~/.bashrc` returns early for a non-interactive shell, so `.bashrc.local` is only read by an interactive one. The PATH, the tools and `~/.bash_secrets` are in `.bash_tools`, which `.bash_profile` loads for every login shell. So `become claude claude -p "..."` and `become claude gh pr list` have the same tools and credentials as an interactive session. A shell that is neither a login shell nor interactive, such as `sudo -u claude bash -c ...`, has none of them.
+
+The umask and `WORKSPACE` are set another way as well, so that they hold even then:
 
 - A sudoers file, `/etc/sudoers.d/90-agent-user-<username>`, gives every command that `sudo` runs as the agent umask 007. `become` goes through `sudo`, so this covers it
 - The account's GECOS field holds `umask=007`, which `pam_umask` applies on the other login paths, such as `login` or `machinectl`
 - `/etc/profile.d/agent-workspace.sh` sets `WORKSPACE` for every login shell, such as `sudo -iu claude`. A shell that is not a login shell, such as `sudo -u claude bash -c ...`, gets the umask but not `WORKSPACE`
-
-On a VM set up by an earlier version, `/workspace` belongs to one agent and holds its files. The script does not take the directory over while anything other than agent directories is in it. Move the files into `/workspace/<username>/` first, then run it again.
 
 ### Setting up credentials for the claude user
 

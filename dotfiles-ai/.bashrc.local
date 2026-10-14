@@ -1,36 +1,22 @@
-# Files made here take the agent's own group, which ubuntu belongs to.
+# Interactive shells. ~/.bashrc sources this file, and ~/.bashrc returns
+# early for a non-interactive shell, so the parts that every shell needs
+# are in ~/.bash_tools, which ~/.bash_profile sources for a login shell.
+source "${HOME}/.bash_tools"
+
+# Files made here take the agent's own group, which ubuntu belongs to. sudo
+# and PAM set this as well; this covers a shell started some other way.
 umask 007
 
-# Interactive-only conveniences (aliases / auto-cd).
-# Each agent user has its own directory under WORKSPACE_ROOT, which is set
-# globally via /etc/environment.
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
-export WORKSPACE="${WORKSPACE_ROOT:-/workspace}/$(id -un)"
+
+# Each agent user has its own directory under WORKSPACE_ROOT, which is set
+# globally via /etc/environment. /etc/profile.d sets WORKSPACE for a login
+# shell; this covers the others.
+export WORKSPACE="${WORKSPACE:-${WORKSPACE_ROOT:-/workspace}/$(id -un)}"
 cd "$WORKSPACE" 2>/dev/null || true
 
 # Claude
 alias cc='claude'
 alias riskycc='claude --dangerously-skip-permissions'
-
-# User-local bin (uv, nextflow, gh, etc.)
-export PATH="${HOME}/.local/bin:${PATH}"
-
-# nvm
-export NVM_DIR="${HOME}/.nvm"
-[[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
-
-# Rust
-[[ -f "${HOME}/.cargo/env" ]] && source "${HOME}/.cargo/env"
-
-# Credentials: API keys, tokens, git identity
-# Copy .bash_secrets.example to ~/.bash_secrets and fill in values.
-if [[ -f "${HOME}/.bash_secrets" ]]; then
-    source "${HOME}/.bash_secrets"
-    [[ -n "${GH_TOKEN:-}" ]] && gh auth setup-git 2>/dev/null || true
-fi
-
-# SDKMAN! — must be last
-export SDKMAN_DIR="${HOME}/.sdkman"
-[[ -s "${SDKMAN_DIR}/bin/sdkman-init.sh" ]] && source "${SDKMAN_DIR}/bin/sdkman-init.sh"
