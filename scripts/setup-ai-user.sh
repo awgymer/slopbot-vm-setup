@@ -334,24 +334,24 @@ add rule inet agentfilter out ip  daddr 169.254.169.254 meta skuid @agent_uids d
 add rule inet agentfilter out ip6 daddr fd00:ec2::254   meta skuid @agent_uids drop
 
 # Agent network namespaces: traffic that goes through the VM.
-add chain inet agentfilter fwd { type filter hook forward priority 0; policy accept; }
-flush chain inet agentfilter fwd
-add rule inet agentfilter fwd iifname "veth-agent*" oifname "veth-agent*" drop
-add rule inet agentfilter fwd iifname "veth-agent*" ip  daddr 169.254.169.254 drop
-add rule inet agentfilter fwd iifname "veth-agent*" ip6 daddr fd00:ec2::254   drop
+add chain inet agentfilter agent_forward { type filter hook forward priority 0; policy accept; }
+flush chain inet agentfilter agent_forward
+add rule inet agentfilter agent_forward iifname "veth-agent*" oifname "veth-agent*" drop
+add rule inet agentfilter agent_forward iifname "veth-agent*" ip  daddr 169.254.169.254 drop
+add rule inet agentfilter agent_forward iifname "veth-agent*" ip6 daddr fd00:ec2::254   drop
 
 # Agent network namespaces: traffic to the VM itself. Only DNS, plus the
 # replies to connections that the VM opened to an agent.
-add chain inet agentfilter in { type filter hook input priority 0; policy accept; }
-flush chain inet agentfilter in
-add rule inet agentfilter in iifname "veth-agent*" ct state established,related accept
-add rule inet agentfilter in iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} udp dport 53 accept
-add rule inet agentfilter in iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} tcp dport 53 accept
-add rule inet agentfilter in iifname "veth-agent*" drop
+add chain inet agentfilter agent_input { type filter hook input priority 0; policy accept; }
+flush chain inet agentfilter agent_input
+add rule inet agentfilter agent_input iifname "veth-agent*" ct state established,related accept
+add rule inet agentfilter agent_input iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} udp dport 53 accept
+add rule inet agentfilter agent_input iifname "veth-agent*" ip daddr ${AGENT_DNS_IP} tcp dport 53 accept
+add rule inet agentfilter agent_input iifname "veth-agent*" drop
 
-add chain inet agentfilter nat { type nat hook postrouting priority srcnat; policy accept; }
-flush chain inet agentfilter nat
-add rule inet agentfilter nat ip saddr ${AGENT_NET_PREFIX}.0.0/16 ip daddr != ${AGENT_NET_PREFIX}.0.0/16 masquerade
+add chain inet agentfilter agent_srcnat { type nat hook postrouting priority srcnat; policy accept; }
+flush chain inet agentfilter agent_srcnat
+add rule inet agentfilter agent_srcnat ip saddr ${AGENT_NET_PREFIX}.0.0/16 ip daddr != ${AGENT_NET_PREFIX}.0.0/16 masquerade
 EOF
 
 cat > "${NFT_DIR}/90-agent-user-${USER_NAME}.nft" <<EOF
@@ -580,8 +580,8 @@ nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
 nft list set inet agentfilter agent_uids 2>/dev/null || echo "  (no agent_uids set)"
 echo
 echo "nftables (agent namespaces):"
-nft list chain inet agentfilter fwd 2>/dev/null || echo "  (not loaded)"
-nft list chain inet agentfilter in  2>/dev/null || echo "  (not loaded)"
+nft list chain inet agentfilter agent_forward 2>/dev/null || echo "  (not loaded)"
+nft list chain inet agentfilter agent_input  2>/dev/null || echo "  (not loaded)"
 echo
 echo "Network namespaces (every agent should be up):"
 agent-netns status 2>/dev/null || echo "  (agent-netns not installed)"

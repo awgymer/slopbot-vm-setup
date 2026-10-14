@@ -251,7 +251,7 @@ Known limits:
 
 - The agents have IPv4 only.
 - If `ufw` is active, its default forward policy is `DROP`, which stops the agents. Set `DEFAULT_FORWARD_POLICY="ACCEPT"` in `/etc/default/ufw`, or add route rules for the agent subnet. The script warns when it sees `ufw` active.
-- To let an agent reach a service on the VM, such as a model server, add an accept rule for that port before the final drop in the `in` chain of the base file.
+- To let an agent reach a service on the VM, such as a model server, add an accept rule for that port before the final drop in the `agent_input` chain of the base file.
 
 ## Security model
 
