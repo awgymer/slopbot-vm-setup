@@ -48,6 +48,7 @@ sudo ./scripts/setup-ai-user.sh claude
   - Disables unprivileged user namespaces
   - Blocks the cloud metadata endpoint (169.254.169.254) via nftables, for every agent user. Each agent has a file `/etc/nftables.d/90-agent-user-<username>.nft` that adds its UID to the blocked set. To remove an agent, delete its file and run `sudo nft delete element inet agentfilter agent_uids '{ <uid> }'`
   - Denies cron and at access
+  - Hides the processes of other users. `/proc` is mounted with `hidepid=invisible`, so an agent sees only its own processes in `ps`. Root and the `adm` group see everything, and `ubuntu` is added to `adm`. The setting is written to `/etc/fstab`, and a login that is already open picks up the group at the next login
 
 ### 3. Ubuntu user setup (ubuntu user)
 

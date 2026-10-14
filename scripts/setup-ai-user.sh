@@ -240,6 +240,28 @@ grep -qxF "$USER_NAME" /etc/at.deny   2>/dev/null || echo "$USER_NAME" >> /etc/a
 # Leave systemd user-lingering disabled (default). To be explicit:
 loginctl disable-linger "$USER_NAME" 2>/dev/null || true
 
+# --- 4. Hide the processes of other users ------------------------------------
+# Without this, `ps` shows every user's command lines, which often carry
+# tokens and repo URLs. hidepid=invisible hides the processes of other
+# users in /proc. The gid option exempts one group, so root and the adm
+# group, which ubuntu joins here, still see everything. The kernel takes
+# the group as a number, so the name is looked up. The fstab line makes
+# the setting survive a reboot: systemd-remount-fs applies it at boot.
+echo "==> Hiding the processes of other users"
+ADM_GID="$(getent group adm | cut -d: -f3)"
+PROC_OPTS="defaults,hidepid=invisible,gid=${ADM_GID}"
+if id ubuntu &>/dev/null; then
+    usermod -aG adm ubuntu
+fi
+if grep -qE '^\s*proc\s+/proc\s' /etc/fstab 2>/dev/null; then
+    sed -i -E "s|^\s*proc\s+/proc\s.*|proc /proc proc ${PROC_OPTS} 0 0|" /etc/fstab
+else
+    echo "proc /proc proc ${PROC_OPTS} 0 0" >> /etc/fstab
+fi
+if ! mount -o "remount,${PROC_OPTS}" /proc 2>/dev/null; then
+    echo "WARNING: could not remount /proc — the fstab entry applies at the next boot" >&2
+fi
+
 # ===========================================================================
 # OPTIONAL HARDENING — uncomment to enable
 # ===========================================================================
@@ -288,6 +310,9 @@ grep '^WORKSPACE_ROOT=' /etc/environment || echo "  (not set)"
 echo
 echo "Unprivileged user namespaces:"
 sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo "  (sysctl not available)"
+echo
+echo "/proc options (hidepid=invisible expected):"
+findmnt -no OPTIONS /proc 2>/dev/null || echo "  (not available)"
 echo
 echo "nftables (metadata block):"
 nft list chain inet agentfilter out 2>/dev/null || echo "  (not loaded)"
