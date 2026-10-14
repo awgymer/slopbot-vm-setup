@@ -103,14 +103,32 @@ else
     if id ubuntu &>/dev/null; then
         chown ubuntu:ubuntu "$WORKSPACE_ROOT"
     fi
-    chmod 755 "$WORKSPACE_ROOT"
+    # 751: an agent can enter its own directory, but cannot list the root
+    #      to see which other agents exist.
+    chmod 751 "$WORKSPACE_ROOT"
 fi
 
-# adduser makes a group for each user, so this is the agent's own group.
+# adduser makes a private group for each user, with the name of the user.
+# The workspace goes to that group, and ubuntu joins it, so the group must
+# belong to this agent alone. Stop if the account was made some other way
+# and shares its primary group, since every user of that group would reach
+# the workspace.
 USER_GROUP="$(id -gn "$USER_NAME")"
-MEMBERS="$(getent group "$USER_GROUP" | cut -d: -f4)"
-if [[ -n "${MEMBERS//ubuntu/}" ]]; then
-    echo "WARNING: group '${USER_GROUP}' has other members (${MEMBERS})." >&2
+if [[ "$USER_GROUP" != "$USER_NAME" ]]; then
+    echo "ERROR: the primary group of ${USER_NAME} is '${USER_GROUP}', not a private group." >&2
+    echo "       Give ${USER_NAME} its own group, then run this script again:" >&2
+    echo "         groupadd ${USER_NAME} && usermod -g ${USER_NAME} ${USER_NAME}" >&2
+    exit 1
+fi
+# getent group lists only the supplementary members. A user whose primary
+# group this is appears in the passwd database instead, so look in both.
+USER_GID="$(id -g "$USER_NAME")"
+OTHERS="$( {
+    getent group "$USER_GROUP" | cut -d: -f4 | tr ',' '\n'
+    getent passwd | awk -F: -v g="$USER_GID" '$4 == g { print $1 }'
+} | awk -v u="$USER_NAME" '$0 != "" && $0 != "ubuntu" && $0 != u' | sort -u | paste -sd,)"
+if [[ -n "$OTHERS" ]]; then
+    echo "WARNING: group '${USER_GROUP}' has other members (${OTHERS})." >&2
     echo "         They will reach ${USER_WORKSPACE} as well." >&2
 fi
 
