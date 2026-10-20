@@ -17,6 +17,14 @@ alias l='ls -CF'
 export WORKSPACE="${WORKSPACE:-${WORKSPACE_ROOT:-/workspace}/$(id -un)}"
 cd "$WORKSPACE" 2>/dev/null || true
 
+# Apptainer and Nextflow image caches, in the workspace. /etc/profile.d sets
+# these for a login shell as well; this covers the others.
+export APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${WORKSPACE}/.apptainer/cache}"
+export SINGULARITY_CACHEDIR="${SINGULARITY_CACHEDIR:-$APPTAINER_CACHEDIR}"
+export NXF_APPTAINER_CACHEDIR="${NXF_APPTAINER_CACHEDIR:-${WORKSPACE}/.apptainer/images}"
+export NXF_SINGULARITY_CACHEDIR="${NXF_SINGULARITY_CACHEDIR:-$NXF_APPTAINER_CACHEDIR}"
+mkdir -p "$APPTAINER_CACHEDIR" "$NXF_APPTAINER_CACHEDIR" 2>/dev/null
+
 # Claude
 alias cc='claude'
 alias riskycc='claude --dangerously-skip-permissions'

@@ -203,6 +203,8 @@ fi
 #   such as login or machinectl. Ubuntu has pam_umask in common-session; a
 #   profile adds it when it is missing.
 # WORKSPACE: /etc/profile.d runs for every login shell, interactive or not.
+#   The Apptainer and Nextflow image caches go under it as well, so that
+#   pulled images sit on the workspace volume rather than in the home.
 # ---------------------------------------------------------------------------
 echo "==> Setting umask 007 and WORKSPACE for every shell of ${USER_NAME}"
 SUDOERS_FILE="/etc/sudoers.d/90-agent-user-${USER_NAME}"
@@ -241,6 +243,16 @@ cat > /etc/profile.d/agent-workspace.sh <<'EOF'
 # /etc/environment. Set WORKSPACE for every login shell, interactive or not.
 if [ -d "${WORKSPACE_ROOT:-/workspace}/$(id -un)" ]; then
     export WORKSPACE="${WORKSPACE_ROOT:-/workspace}/$(id -un)"
+
+    # Apptainer keeps its layer cache in APPTAINER_CACHEDIR, and reads the
+    # SINGULARITY_ name as well. Nextflow stores the images it pulls in
+    # NXF_APPTAINER_CACHEDIR, or NXF_SINGULARITY_CACHEDIR for a pipeline that
+    # runs with the singularity profile. Both go in the workspace.
+    export APPTAINER_CACHEDIR="${WORKSPACE}/.apptainer/cache"
+    export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
+    export NXF_APPTAINER_CACHEDIR="${WORKSPACE}/.apptainer/images"
+    export NXF_SINGULARITY_CACHEDIR="$NXF_APPTAINER_CACHEDIR"
+    mkdir -p "$APPTAINER_CACHEDIR" "$NXF_APPTAINER_CACHEDIR" 2>/dev/null
 fi
 EOF
 
@@ -558,6 +570,9 @@ sudo -u "$USER_NAME" sh -c umask 2>/dev/null || echo "  (sudo failed)"
 echo
 echo "WORKSPACE of a non-interactive login shell as ${USER_NAME}:"
 sudo -iu "$USER_NAME" printenv WORKSPACE 2>/dev/null || echo "  (not set)"
+echo
+echo "APPTAINER_CACHEDIR of a non-interactive login shell as ${USER_NAME}:"
+sudo -iu "$USER_NAME" printenv APPTAINER_CACHEDIR 2>/dev/null || echo "  (not set)"
 echo
 echo "Unprivileged user namespaces (at least one key must exist):"
 for key in kernel.unprivileged_userns_clone kernel.apparmor_restrict_unprivileged_userns \
