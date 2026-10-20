@@ -271,8 +271,9 @@ fi
 # --- 1. Disable unprivileged user namespaces ---------------------------------
 # Prevents the agent using namespace tricks as a kernel escape vector.
 # Apptainer (used for Nextflow container processes) works without this via
-# its SUID helper binary — ensure Apptainer is installed from the official
-# Ubuntu package so the SUID binary is present.
+# its SUID starter binary — install-system-tools.sh installs the
+# 'apptainer-suid' package from the official PPA so the starter is present.
+# The plain 'apptainer' package is the non-setuid build and fails here.
 #
 # unprivileged_userns_clone is a Debian patch that not every Ubuntu kernel
 # has. apparmor_restrict_unprivileged_userns is the knob that Ubuntu

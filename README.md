@@ -24,7 +24,7 @@ The system tools must come first: the user tools need `unzip` and a C toolchain.
 sudo ./scripts/install-system-tools.sh
 ```
 
-Installs Apptainer via the official PPA. Must be system-level because unprivileged user namespaces are disabled as part of the hardening in step 3.
+Installs Apptainer via the official PPA, as the `apptainer-suid` package. The setuid build is required because unprivileged user namespaces are disabled as part of the hardening in step 3, and the plain `apptainer` package depends on them. Features that need user namespaces, such as `--fakeroot`, are not available to agent users.
 
 The script also sets the system timezone. A new VM uses UTC. The default is `Australia/Adelaide`. To use a different zone, give `VM_TIMEZONE` to `sudo`:
 

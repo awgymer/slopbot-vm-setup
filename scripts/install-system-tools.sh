@@ -7,7 +7,7 @@
 #   - build-essential  (C toolchain required by Rust crates and other native builds)
 #   - zip / unzip
 #   - tzdata  (timezone database)
-#   - apptainer  (requires SUID binary; must be system-level)
+#   - apptainer-suid  (Apptainer with its SUID starter; must be system-level)
 #
 set -euo pipefail
 
@@ -41,11 +41,16 @@ fi
 
 # ---------------------------------------------------------------------------
 # Apptainer
+#
+# The PPA has two builds. 'apptainer' is the non-setuid build, which creates
+# a user namespace for every container and so fails once setup-ai-user.sh
+# has disabled unprivileged user namespaces. 'apptainer-suid' adds the
+# root-owned SUID starter, which needs no user namespace.
 # ---------------------------------------------------------------------------
-echo "==> Installing Apptainer"
+echo "==> Installing Apptainer (setuid build)"
 add-apt-repository -y ppa:apptainer/ppa
 apt-get update -q
-apt-get install -y apptainer
+apt-get install -y apptainer-suid
 
 echo
 echo "Done."
